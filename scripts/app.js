@@ -9,8 +9,29 @@
   let draftImages = [];
   const pictures = window.journalImages;
   const templates = window.journalTemplates;
+  const discovery = window.journalDiscovery;
+  const tagsInput = $('#entry-tags');
+  let selectedTag = '', searchTimer;
+  const filters = () => ({ query: $('#memory-search').value, mood: $('#filter-mood').value, template: $('#filter-template').value, range: $('#filter-range').value, sort: $('#sort-order').value, tag: selectedTag });
+  const visibleEntries = () => discovery.select(entries, filters());
   const templateEditor = templates.createEditor(() => { error.textContent = ''; });
-  const snapshot = () => JSON.stringify([titleInput.value, moodInput.value, dateInput.value, templateEditor.snapshot(), draftImages.map(image => image.id)]);
+  const snapshot = () => JSON.stringify([titleInput.value, moodInput.value, dateInput.value, tagsInput.value, templateEditor.snapshot(), draftImages.map(image => image.id)]);
+  function tagList(container, tags, clickable = false) {
+    container.replaceChildren();
+    tags.forEach(tag => {
+      const pill = document.createElement(clickable ? 'button' : 'span'); pill.className = 'tag-pill'; pill.textContent = tag;
+      if (clickable) {
+        pill.type = 'button'; pill.setAttribute('aria-label', `筛选标签：${tag}`);
+        pill.addEventListener('click', () => { if (busy) return; selectedTag = tag; renderMemories(); $('#active-tag').focus(); });
+      }
+      container.append(pill);
+    });
+  }
+  function previewTags() {
+    try { const tags = discovery.parseTags(tagsInput.value); tagList($('#tag-previews'), tags); $('#tags-error').textContent = ''; return tags; }
+    catch (cause) { $('#tags-error').textContent = cause.message; $('#tag-previews').replaceChildren(); return null; }
+  }
+  tagsInput.addEventListener('input', previewTags);
   const today = () => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -32,11 +53,26 @@
   }
   function renderMemories() {
     pictures.clear('home');
-    entries.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')) || b.id - a.id);
+    const matches = visibleEntries();
+    const criteria = filters();
+    const constrained = Boolean(criteria.query.trim() || criteria.mood || criteria.template || criteria.range || criteria.tag);
     $('#memory-list').replaceChildren();
-    $('#empty-state').hidden = entries.length > 0;
+    $('#empty-state').hidden = entries.length > 0 || constrained;
+    $('#no-results').hidden = matches.length > 0 || (!entries.length && !constrained);
     $('#entry-count').textContent = `${entries.length} 篇`;
-    entries.forEach(entry => {
+    const parts = [];
+    if (criteria.query.trim()) parts.push(`关键词“${criteria.query.trim()}”`);
+    if (criteria.mood) parts.push(criteria.mood);
+    if (criteria.template) parts.push(templates.definitions[criteria.template].name);
+    if (criteria.range) parts.push($('#filter-range').selectedOptions[0].textContent);
+    if (criteria.tag) parts.push(`标签“${criteria.tag}”`);
+    $('#filter-summary').textContent = `${matches.length} / ${entries.length} 篇${parts.length ? ' · ' + parts.join(' · ') : ''}`;
+    $('#active-tag').hidden = !selectedTag;
+    $('#active-tag').textContent = selectedTag ? `标签：${selectedTag} ×` : '';
+    $('#active-tag').setAttribute('aria-label', '取消标签筛选');
+    const fragment = document.createDocumentFragment();
+    matches.forEach(entry => {
+      const item = document.createElement('article'); item.className = 'memory-item';
       const card = document.createElement('button');
       card.type = 'button'; card.className = 'memory-card';
       card.setAttribute('aria-label', `查看记录：${entry.title}`);
@@ -58,9 +94,26 @@
       content.textContent = characters.slice(0, 100).join('') + (characters.length > 100 ? '…' : '');
       card.append(title, created, mood, template, content);
       card.addEventListener('click', () => openDetail(entry.id));
-      $('#memory-list').append(card);
+      item.append(card);
+      if (entry.tags.length) {
+        const tags = document.createElement('div'); tags.className = 'tag-list card-tags';
+        tagList(tags, entry.tags, true); item.append(tags);
+      }
+      fragment.append(item);
     });
+    $('#memory-list').append(fragment);
   }
+  $('#memory-search').addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => { if (!busy && !home.hidden) renderMemories(); }, 150);
+  });
+  ['#filter-mood', '#filter-template', '#filter-range', '#sort-order'].forEach(selector => $(selector).addEventListener('change', () => { if (!busy) renderMemories(); }));
+  $('#active-tag').addEventListener('click', () => { selectedTag = ''; renderMemories(); $('#memory-search').focus(); });
+  $('#clear-filters').addEventListener('click', () => {
+    clearTimeout(searchTimer); selectedTag = '';
+    ['#memory-search', '#filter-mood', '#filter-template', '#filter-range'].forEach(selector => { $(selector).value = ''; });
+    $('#sort-order').value = 'newest'; renderMemories();
+  });
   async function loadEntries() {
     if (busy) return;
     lock(true);
@@ -80,6 +133,7 @@
     $('#detail-title').textContent = entry.title;
     $('#detail-mood').textContent = moods[entry.mood];
     $('#detail-template').textContent = templates.definitions[entry.templateType].name;
+    tagList($('#detail-tags'), entry.tags);
     $('#detail-date').textContent = `记录日期：${entry.date || '未记录'}`;
     $('#detail-created').textContent = `创建于 ${timestamp(entry.createdAt)}`;
     $('#detail-updated').hidden = !entry.updatedAt;
@@ -115,6 +169,7 @@
     editingId = entry ? entry.id : null;
     form.reset();
     titleInput.value = entry ? entry.title : '';
+    tagsInput.value = entry ? entry.tags.join('、') : ''; previewTags();
     moodInput.value = entry ? entry.mood : '平静';
     dateInput.value = entry ? entry.date : today();
     dateInput.disabled = !!entry;
@@ -176,18 +231,20 @@
   form.addEventListener('submit', async event => {
     event.preventDefault();
     if (busy || editor.hidden) return;
+    const tags = previewTags();
+    if (!tags) { tagsInput.focus(); return; }
     let template;
     try { template = templateEditor.collect(); }
     catch (cause) { error.textContent = cause.message; templateEditor.focus(); return; }
     if (!form.reportValidity()) return;
-    const changes = { title: titleInput.value, mood: moodInput.value, ...template, images: [...draftImages] };
+    const changes = { title: titleInput.value, mood: moodInput.value, tags, ...template, images: [...draftImages] };
     const isEdit = editingId !== null;
     lock(true); error.textContent = '';
     const save = form.querySelector('[type="submit"]'); save.textContent = '正在保存…';
     let saved;
     try {
       saved = isEdit ? await window.journalStore.update(editingId, changes)
-        : await window.journalStore.add(dateInput.value, changes.content, changes.title, changes.mood, changes.images, template);
+        : await window.journalStore.add(dateInput.value, changes.content, changes.title, changes.mood, changes.images, template, changes.tags);
     } catch {
       error.textContent = `${isEdit ? '修改' : '保存'}失败，输入内容已保留。请检查本地存储权限、磁盘空间或记录是否仍存在，然后重试。`;
       return;
@@ -198,6 +255,7 @@
     if (isEdit) renderDetail(saved);
     else { show(home); $('#memories-title').focus(); }
     status.textContent = isEdit ? '修改已保存，原始创建时间保持不变。' : '已保存到当前浏览器。刷新或关闭后重新打开，记录仍会保留。';
+    if (!isEdit && !visibleEntries().some(entry => entry.id === saved.id)) status.textContent += ' 当前筛选隐藏了这篇记录，清除筛选即可查看。';
   });
   function cancelForm() {
     if (busy) return;

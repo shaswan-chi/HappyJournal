@@ -3,6 +3,7 @@ window.journalStore = (() => {
   const moods = ['开心', '平静', '难过', '焦虑', '期待'];
   const normalize = entry => ({ ...entry,
     ...window.journalTemplates.normalize(entry),
+    tags: window.journalDiscovery.normalizeTags(entry.tags),
     title: typeof entry.title === 'string' && entry.title.trim() ? entry.title.trim() : '今天的记录',
     mood: moods.includes(entry.mood) ? entry.mood : '平静',
     content: typeof entry.content === 'string' ? entry.content : '',
@@ -38,8 +39,8 @@ window.journalStore = (() => {
       });
     } finally { db.close(); }
   }
-  const fields = ({ title = '', mood = '平静', ...entry }) => {
-    return { title: String(title).trim() || '今天的记录', mood: moods.includes(mood) ? mood : '平静', ...window.journalTemplates.prepare(entry) };
+  const fields = ({ title = '', mood = '平静', tags = [], ...entry }) => {
+    return { title: String(title).trim() || '今天的记录', mood: moods.includes(mood) ? mood : '平静', tags: window.journalDiscovery.validateTags(tags), ...window.journalTemplates.prepare(entry) };
   };
   const imageFields = images => {
     if (!Array.isArray(images) || images.length > 3) throw new Error('每条日记最多保存 3 张图片。');
@@ -51,8 +52,8 @@ window.journalStore = (() => {
   const summary = entry => ({ ...normalize(entry), images: normalize(entry).images.slice(0, 1).map(({ id, name, thumbnail }) => ({ id, name, thumbnail })) });
   return {
     summary,
-    async add(date, content, title = '', mood = '平静', images = [], template = {}) {
-      const entry = { date, ...fields({ title, mood, content, ...template }), images: imageFields(images), createdAt: new Date().toISOString() };
+    async add(date, content, title = '', mood = '平静', images = [], template = {}, tags = []) {
+      const entry = { date, ...fields({ title, mood, content, ...template, tags }), images: imageFields(images), createdAt: new Date().toISOString() };
       return transaction('readwrite', (store, done) => {
         const request = store.add(entry);
         request.onsuccess = () => done({ ...entry, id: request.result });

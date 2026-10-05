@@ -1,0 +1,138 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>HappyJournal 搜索筛选标签回归测试</title>
+<h1>搜索筛选标签回归测试</h1>
+<p>使用独立的临时测试数据库，不修改正式日记。刷新此页可重新测试。</p>
+<pre id="result">正在测试…</pre>
+<iframe title="日记测试页面" style="width:100%;height:750px"></iframe>
+<script>
+(async () => {
+  const frame = document.querySelector('iframe'), output = document.querySelector('#result');
+  const databaseName = 'HappyJournal-discovery-test-' + Date.now();
+  const logs = [];
+  const assert = (value, message) => { if (!value) throw new Error(message); };
+  const pass = message => { logs.push('PASS ' + message); output.textContent = logs.join('\n'); };
+  const wait = async check => {
+    for (let i = 0; i < 150; i++) {
+      if (await check()) return;
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    throw new Error('界面等待超时');
+  };
+  let win, doc;
+  const $ = selector => doc.querySelector(selector);
+  const click = selector => $(selector).click();
+  // 将正式网页原样装入 iframe，仅将数据库名称替换为独立测试库。
+  const html = await (await fetch('../index.html')).text();
+  const setup = `<script>const originalOpen = IDBFactory.prototype.open; IDBFactory.prototype.open = function(name, version) { return originalOpen.call(this, name === 'HappyJournal' ? ${JSON.stringify(databaseName)} : name, version); };<\/script>`;
+  const fixture = html.replace('<head>', '<head><base href="../">' + setup);
+  async function reload() {
+    const loaded = new Promise(resolve => frame.addEventListener('load', resolve, { once: true }));
+    frame.srcdoc = fixture; await loaded;
+    win = frame.contentWindow; doc = win.document;
+    await wait(() => !$('#new-entry').disabled);
+  }
+  async function raw(action) {
+    const db = await new Promise((resolve, reject) => {
+      const r = indexedDB.open(databaseName, 1); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error);
+    });
+    try { return await new Promise((resolve, reject) => {
+      const tx = db.transaction('entries', 'readwrite'); let result;
+      const request = action(tx.objectStore('entries'));
+      request.onsuccess = () => { result = request.result; };
+      tx.oncomplete = () => resolve(result); tx.onabort = () => reject(tx.error);
+    }); } finally { db.close(); }
+  }
+  const openCard = async index => { doc.querySelectorAll('.memory-card')[index].click(); await wait(() => !$('#detail-view').hidden); };
+  const submit = async () => { $('#entry-form').requestSubmit(); await wait(() => $('#entry-view').hidden || $('#content-error').textContent.includes('失败')); };
+  function abortWrites() {
+    const original = win.IDBDatabase.prototype.transaction;
+    win.IDBDatabase.prototype.transaction = function(...args) {
+      const tx = original.apply(this, args);
+      if (args[1] === 'readwrite') win.queueMicrotask(() => tx.abort());
+      return tx;
+    };
+    return () => { win.IDBDatabase.prototype.transaction = original; };
+  }
+  const names = () => [...doc.querySelectorAll('.card-title')].map(e => e.textContent).join(',');
+  async function search(value) { $('#memory-search').value = value; $('#memory-search').dispatchEvent(new win.Event('input')); await new Promise(resolve => setTimeout(resolve, 200)); }
+  function filter(id, value) { $(id).value = value; $(id).dispatchEvent(new win.Event('change')); }
+  const day = offset => { const date = new Date(); date.setDate(date.getDate() + offset); return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`; };
+  async function create(title, mood, tags, offset) {
+    click('#new-entry'); $('#entry-heading').value = title; $('#entry-mood').value = mood;
+    $('#entry-content').value = title + '正文'; $('#entry-tags').value = tags; $('#entry-date').value = day(offset);
+    await submit();
+  }
+  try {
+    await reload();
+    await create('学习英语', '开心', '学习、英语、学习', -2);
+    await create('周末散步', '平静', '生活、散步', -1);
+    await create('旅行记录', '期待', '旅行', 0);
+    await reload();
+    assert(names() === '旅行记录,周末散步,学习英语', '最新排序错误');
+    const initial = await win.journalStore.list();
+    const a = initial.find(e => e.title === '学习英语'), b = initial.find(e => e.title === '周末散步');
+    assert(a.tags.join(',') === '学习,英语', '标签未持久化或重复未合并');
+    let databaseOpens = 0; const originalOpen = win.IDBFactory.prototype.open;
+    win.IDBFactory.prototype.open = function(...args) { databaseOpens++; return originalOpen.apply(this,args); };
+    await search('英语'); assert(names() === '学习英语', '英语搜索未只显示 A');
+    click('#clear-filters'); filter('#filter-mood', '平静'); assert(names() === '周末散步', '平静筛选未只显示 B');
+    click('#clear-filters'); doc.querySelector('button[aria-label="筛选标签：旅行"]').click();
+    assert(names() === '旅行记录', '标签点击未只显示 C');
+    assert($('#detail-view').hidden, '点击标签意外打开详情');
+    click('#clear-filters'); await search('英语'); filter('#filter-mood','开心'); filter('#filter-range','30'); filter('#filter-template','free');
+    assert(names() === '学习英语', '组合筛选失败');
+    filter('#filter-mood','难过'); assert(!names() && !$('#no-results').hidden, '无结果状态失败');
+    click('#clear-filters'); assert(names() === '旅行记录,周末散步,学习英语', '清除未恢复所有记录');
+    filter('#sort-order','oldest'); assert(names() === '学习英语,周末散步,旅行记录', '最早排序错误');
+    assert(databaseOpens === 0, '搜索或筛选重复打开数据库');
+    win.IDBFactory.prototype.open = originalOpen;
+    pass('A/B/C 搜索、心情、点击标签、组合筛选、无结果、清除与双向排序通过；筛选期间数据库访问为 0');
+    click('#clear-filters');
+    doc.querySelector('button[aria-label="查看记录：学习英语"]').click(); await wait(() => !$('#detail-view').hidden);
+    assert($('#detail-tags').textContent.includes('英语'), '详情标签缺失'); click('#edit-entry'); $('#entry-tags').value = '成长,ENGLISH';
+    let restore = abortWrites(); await submit(); restore();
+    assert($('#entry-tags').value === '成长,ENGLISH' && (await win.journalStore.get(a.id)).tags.includes('英语'), '失败后标签不一致');
+    await submit(); await reload(); await search('english'); assert(names() === '学习英语', '英文大小写搜索失败');
+    assert((await win.journalStore.get(a.id)).tags.join(',') === '成长,ENGLISH', '标签修改刷新不保留');
+    pass('标签详情、编辑持久化、失败保留、英文不区分大小写通过');
+    click('#clear-filters'); click('#new-entry'); $('#entry-content').value = '标签校验测试';
+    $('#entry-tags').value = '一、二、三、四、五、六'; $('#entry-form').requestSubmit();
+    assert($('#tags-error').textContent.includes('最多 5'), '标签数量没有校验');
+    $('#entry-tags').value = '1234567890123'; $('#entry-form').requestSubmit();
+    assert($('#tags-error').textContent.includes('12'), '标签长度没有校验');
+    $('#entry-tags').value = '学习,学习'; $('#entry-tags').dispatchEvent(new win.Event('input'));
+    assert(doc.querySelectorAll('#tag-previews .tag-pill').length === 1, '重复标签预览没有合并');
+    click('#cancel-entry'); click('#discard-entry');
+    pass('标签最多 5 个、每个 12 字符、自动去重和取消未保存修改通过');
+    const oldId = await raw(store => store.add({date:'2020-01-01',content:'旧版无标签',createdAt:'2020-01-01T00:00:00Z'}));
+    await reload(); await search('旧版'); await openCard(0);
+    assert(!$('#detail-tags').textContent, '旧记录默认标签错误'); click('#edit-entry'); assert($('#entry-tags').value === '', '旧记录标签回填错误');
+    $('#entry-content').value = '旧版编辑完成'; await submit(); await reload();
+    assert((await win.journalStore.get(oldId)).content === '旧版编辑完成', '旧版编辑失败');
+    await search('旧版'); await openCard(0); click('#delete-entry'); click('#confirm-delete'); await wait(() => !$('#memories-view').hidden);
+    pass('旧版没有 tags 的记录可显示、编辑和删除');
+    // 独立模板字段即使不在 content 中，也必须可搜索。
+    await raw(store => store.add({date:day(0),title:'日常模板',content:'摘要',mood:'开心',templateType:'daily',templateData:{learned:'独立字段Apple'},tags:[]}));
+    await raw(store => store.add({date:day(0),title:'反思模板',content:'摘要',mood:'平静',templateType:'reflection',templateData:{futureSelf:'独立字段明天'},tags:[]}));
+    await raw(store => store.add({date:day(0),title:'时间模板',content:'摘要',mood:'期待',templateType:'timeline',templateData:{rows:[{time:'08:30',event:'独立事件阅读'}]},tags:[]}));
+    await reload(); await search('APPLE'); assert(names() === '日常模板', '日常独立字段不匹配');
+    await search('独立字段明天'); assert(names() === '反思模板', '反思字段不匹配');
+    await search('独立事件阅读'); assert(names() === '时间模板', '时间事件不匹配');
+    filter('#filter-template','daily'); assert(!names(), '模板筛选未与搜索组合'); click('#clear-filters'); filter('#filter-template','timeline'); assert(names() === '时间模板', '单独模板筛选失败');
+    pass('日常、反思全部结构化字段和时间事件可独立搜索，模板筛选正常');
+    const probe = ['2025-12-06','2025-12-07','2025-12-29','2025-12-30','2026-01-05','2026-01-06'].map((date,id)=>({id,date,tags:[]}));
+    const fixed = new Date(2026,0,5,12);
+    assert(win.journalDiscovery.select(probe,{range:'7'},fixed).length === 2, '7 天边界或未来日期错误');
+    assert(win.journalDiscovery.select(probe,{range:'30'},fixed).length === 4, '30 天跨年边界错误');
+    assert(win.journalDiscovery.select(probe,{range:'year'},fixed).length === 2, '今年边界错误');
+    pass('日期范围按本地日历日，7 天、30 天、今年跨年边界通过');
+    await raw(store => { let request; for(let i=0;i<500;i++) request=store.add({date:day(0),title:'批量'+i,content:'性能测试',tags:['批量'],mood:'平静'}); return request; });
+    await reload(); const start = performance.now(); await search('批量');
+    assert(doc.querySelectorAll('.memory-card').length === 500, '500 条记录搜索结果不完整');
+    pass('500 条本地记录筛选并显示完成（含输入等待约 '+Math.round(performance.now()-start)+'ms）');
+    output.textContent += '\n全部通过。';
+  } catch (error) { output.textContent += '\nFAIL ' + error.message; }
+  finally { frame.remove(); indexedDB.deleteDatabase(databaseName); }
+})();
+</script>

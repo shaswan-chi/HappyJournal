@@ -4,11 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>开心手帐 Happy Journal</title>
-    <link rel="stylesheet" href="styles/main.css?v=4">
+    <link rel="stylesheet" href="styles/main.css?v=5">
     <script src="scripts/templates.js?v=4" defer></script>
-    <script src="scripts/storage.js?v=4" defer></script>
+    <script src="scripts/discovery.js?v=5" defer></script>
+    <script src="scripts/storage.js?v=5" defer></script>
     <script src="scripts/images.js?v=3" defer></script>
-    <script src="scripts/app.js?v=4" defer></script>
+    <script src="scripts/app.js?v=5" defer></script>
   </head>
   <body>
     <header class="site-header">
@@ -22,7 +23,19 @@
           <div><p class="eyebrow">生活里的小小片段</p><h1 id="memories-title" tabindex="-1">我的回忆</h1><p class="intro">平凡的一天，也有值得写下的瞬间。</p></div>
           <button id="new-entry" class="primary" type="button">＋ 记录今天</button>
         </div>
-        <div class="list-heading"><h2>留下的日常 <span id="entry-count">0 篇</span></h2><span>按日期从新到旧</span></div>
+        <div class="list-heading"><h2>留下的日常 <span id="entry-count">0 篇</span></h2><label class="sort-label" for="sort-order">排序 <select id="sort-order"><option value="newest">最新优先</option><option value="oldest">最早优先</option></select></label></div>
+        <div class="discovery-bar">
+          <label class="search-label" for="memory-search">找一段回忆<input id="memory-search" type="search" placeholder="搜索标题、内容或标签…" autocomplete="off"></label>
+          <details class="filter-panel"><summary>筛选回忆</summary><div class="filter-fields">
+            <label for="filter-mood">心情<select id="filter-mood"><option value="">全部心情</option><option>开心</option><option>平静</option><option>难过</option><option>焦虑</option><option>期待</option></select></label>
+            <label for="filter-template">模板<select id="filter-template"><option value="">全部模板</option><option value="free">自由记录</option><option value="daily">日常记录</option><option value="reflection">反思记录</option><option value="timeline">时间记录</option></select></label>
+            <label for="filter-range">记录日期<select id="filter-range"><option value="">全部日期</option><option value="7">最近 7 天</option><option value="30">最近 30 天</option><option value="year">今年</option></select></label>
+          </div><p class="field-hint">按日记所选日期筛选；最近 7 / 30 天包含今天。</p></details>
+          <button id="clear-filters" type="button" class="secondary">清除筛选</button>
+        </div>
+        <p id="filter-summary" class="filter-summary" role="status"></p>
+        <button id="active-tag" type="button" class="tag-pill" hidden></button>
+        <div id="no-results" class="empty-state" hidden><h2>没有找到这段回忆。</h2><p>换个关键词，或清除筛选再看看。</p></div>
         <div id="empty-state" class="empty-state"><span class="empty-mark" aria-hidden="true">一日一记</span><h2>从今天的一件小事开始</h2><p>一顿喜欢的饭、一次散步，或此刻的心情。<br>不用写得很好，写下就好。</p><button id="first-entry" type="button" class="primary">写下第一篇回忆</button></div>
         <div id="memory-list" class="memory-grid"></div>
         <p id="home-error" class="field-error" role="alert"></p>
@@ -41,6 +54,11 @@
           <label for="entry-heading">标题 <span>选填</span></label>
           <input id="entry-heading" name="title" type="text" placeholder="今天的记录">
           <p class="field-hint">留空时显示“今天的记录”。</p>
+          <label for="entry-tags">标签 <span>选填</span></label>
+          <input id="entry-tags" type="text" placeholder="例如：学习、英语" aria-describedby="tags-hint tags-error">
+          <p id="tags-hint" class="field-hint">用逗号或顿号分隔，最多 5 个，每个最多 12 个字符；重复标签自动合并。</p>
+          <div id="tag-previews" class="tag-list"></div>
+          <p id="tags-error" class="field-error" role="alert"></p>
           <label for="entry-mood">心情</label>
           <select id="entry-mood" name="mood"><option value="开心">😊 开心</option><option value="平静" selected>🌿 平静</option><option value="难过">😔 难过</option><option value="焦虑">😟 焦虑</option><option value="期待">✨ 期待</option></select>
           <p class="field-hint">选一个接近此刻的心情。</p>
@@ -68,6 +86,7 @@
           <h1 id="detail-title" tabindex="-1"></h1>
           <p id="detail-mood" class="entry-meta"></p>
           <p id="detail-template" class="entry-meta"></p>
+          <div id="detail-tags" class="tag-list" aria-label="日记标签"></div>
           <p id="detail-date" class="entry-meta"></p>
           <p id="detail-created" class="entry-meta"></p>
           <p id="detail-updated" class="entry-meta" hidden></p>
