@@ -8,7 +8,9 @@
 - 第四阶段：自由/日常/反思/时间模板、结构化字段、动态时间行和分节详情。
 - 第五阶段：全文搜索、心情/模板/日期组合筛选、标签输入/保存/点击筛选、最新/最早排序，保持原有手帐卡片。
 
-使用说明、数据结构和手动测试见 README.md。测试页面：tests/discovery.html、tests/templates.html、tests/diary-crud.html、tests/images.html，均使用独立临时数据库。
+- 第六阶段：按月份和日期分组的回忆信息流、1～3 图完整比例布局、随机回忆、返回浏览位置；不改变数据库结构。
+
+使用说明、数据结构和手动测试见 README.md。测试页面：tests/feed.html、tests/discovery.html、tests/templates.html、tests/diary-crud.html、tests/images.html，均使用独立临时数据库。
 
 搜索在内存完成，不随输入查询数据库；旧版没有 tags 的记录按空标签数组读取。数据库名称、表名和版本不变。
 

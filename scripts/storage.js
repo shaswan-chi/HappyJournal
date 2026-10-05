@@ -48,8 +48,8 @@ window.journalStore = (() => {
       || image.blob.size > 2 * 1024 * 1024 || image.thumbnail.size > 512 * 1024)) throw new Error('图片数据无效或过大。');
     return images;
   };
-  // 首页只保留封面缩略图引用，详情和编辑时再读取完整图片。
-  const summary = entry => ({ ...normalize(entry), images: normalize(entry).images.slice(0, 1).map(({ id, name, thumbnail }) => ({ id, name, thumbnail })) });
+  // 首页只保留最多三张缩略图引用，详情和编辑时再读取完整图片。
+  const summary = entry => ({ ...normalize(entry), images: normalize(entry).images.slice(0, 3).map(({ id, name, thumbnail }) => ({ id, name, thumbnail })) });
   return {
     summary,
     async add(date, content, title = '', mood = '平静', images = [], template = {}, tags = []) {

@@ -132,7 +132,7 @@
     assert((await raw(store => store.get(mixed.id))).images.length === 1, '有效图片未随正文保存');
     pass('超 5MB、伪装图片和动图被拒绝；损坏图片跳过，其他图片及正文仍可保存');
     await openCard(0); click('#edit-entry'); click('#image-previews button'); await submit(); await reload();
-    assert((await raw(store => store.get(mixed.id))).images.length === 0 && !$('.memory-item:first-child .card-cover'), '移除全部图片失败');
+    assert((await raw(store => store.get(mixed.id))).images.length === 0 && !$('.memory-card').querySelector('.card-cover'), '移除全部图片失败');
     assert((await raw(store => store.get(oldId))).content === '无图旧记录', '旧记录被改动');
     pass('移除全部图片后恢复文字卡片；无图旧记录完整保留');
     output.textContent += '\n全部通过。';

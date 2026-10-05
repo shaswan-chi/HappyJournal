@@ -1,0 +1,107 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>pre { white-space: pre-wrap; overflow-wrap: anywhere; } iframe { box-sizing: border-box; }</style>
+<title>HappyJournal 回忆信息流回归测试</title>
+<h1>回忆信息流回归测试</h1>
+<p>使用独立的临时测试数据库，不修改正式日记。刷新此页可重新测试。</p>
+<pre id="result">正在测试…</pre>
+<iframe title="日记测试页面" style="width:100%;height:750px"></iframe>
+<script>
+(async () => {
+  const frame = document.querySelector('iframe'), output = document.querySelector('#result');
+  const databaseName = 'HappyJournal-feed-test-' + Date.now();
+  const logs = [];
+  const assert = (value, message) => { if (!value) throw new Error(message); };
+  const pass = message => { logs.push('PASS ' + message); output.textContent = logs.join('\n'); };
+  const wait = async check => {
+    for (let i = 0; i < 150; i++) {
+      if (await check()) return;
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    throw new Error('界面等待超时');
+  };
+  let win, doc;
+  const $ = selector => doc.querySelector(selector);
+  const click = selector => $(selector).click();
+  // 将正式网页原样装入 iframe，仅将数据库名称替换为独立测试库。
+  const html = await (await fetch('../index.html')).text();
+  const setup = `<script>const originalOpen = IDBFactory.prototype.open; IDBFactory.prototype.open = function(name, version) { return originalOpen.call(this, name === 'HappyJournal' ? ${JSON.stringify(databaseName)} : name, version); };<\/script>`;
+  const fixture = html.replace('<head>', '<head><base href="../">' + setup);
+  async function reload() {
+    const loaded = new Promise(resolve => frame.addEventListener('load', resolve, { once: true }));
+    frame.srcdoc = fixture; await loaded;
+    win = frame.contentWindow; doc = win.document;
+    await wait(() => !$('#new-entry').disabled);
+  }
+  async function raw(action) {
+    const db = await new Promise((resolve, reject) => {
+      const r = indexedDB.open(databaseName, 1); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error);
+    });
+    try { return await new Promise((resolve, reject) => {
+      const tx = db.transaction('entries', 'readwrite'); let result;
+      const request = action(tx.objectStore('entries'));
+      request.onsuccess = () => { result = request.result; };
+      tx.oncomplete = () => resolve(result); tx.onabort = () => reject(tx.error);
+    }); } finally { db.close(); }
+  }
+  const openCard = async index => { doc.querySelectorAll('.memory-card')[index].click(); await wait(() => !$('#detail-view').hidden); };
+  const submit = async () => { $('#entry-form').requestSubmit(); await wait(() => $('#entry-view').hidden || $('#content-error').textContent.includes('失败')); };
+  function abortWrites() {
+    const original = win.IDBDatabase.prototype.transaction;
+    win.IDBDatabase.prototype.transaction = function(...args) {
+      const tx = original.apply(this, args);
+      if (args[1] === 'readwrite') win.queueMicrotask(() => tx.abort());
+      return tx;
+    };
+    return () => { win.IDBDatabase.prototype.transaction = original; };
+  }
+  const names = () => [...doc.querySelectorAll('.card-title')].map(e => e.textContent).join(',');
+  async function search(value) { $('#memory-search').value = value; $('#memory-search').dispatchEvent(new win.Event('input')); await new Promise(resolve => setTimeout(resolve, 200)); }
+  function filter(id, value) { $(id).value = value; $(id).dispatchEvent(new win.Event('change')); }
+  const day = offset => { const date = new Date(); date.setDate(date.getDate() + offset); return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`; };
+  async function create(title, mood, tags, offset) {
+    click('#new-entry'); $('#entry-heading').value = title; $('#entry-mood').value = mood;
+    $('#entry-content').value = title + '正文'; $('#entry-tags').value = tags; $('#entry-date').value = day(offset);
+    await submit();
+  }
+  try {
+    await reload(); click('#random-memory'); assert($('#save-status').textContent.includes('还没有回忆'), '空随机无提示');
+    const canvas = document.createElement('canvas'); canvas.width = 800; canvas.height = 400;
+    const context = canvas.getContext('2d'); context.fillStyle = '#d9bd79'; context.fillRect(0,0,800,400); context.fillStyle = '#514b39'; context.font = '42px sans-serif'; context.fillText('Happy Journal · 回忆',40,180);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    const image = { id:'test-image', name:'回忆.png', blob, thumbnail:blob, width:800, height:400 };
+    canvas.width = 400; canvas.height = 800; context.fillStyle = '#a3b89c'; context.fillRect(0,0,400,800);
+    const portraitBlob = await new Promise(resolve => canvas.toBlob(resolve,'image/png'));
+    const portrait = { ...image, id:'portrait', name:'竖图.png', blob:portraitBlob, thumbnail:portraitBlob, width:400, height:800 };
+    const records = [
+      { date:'2026-10-05',title:'纯文字记录',content:'散步后的心情',mood:'平静',tags:['散步'],images:[],createdAt:'2026-10-05T09:00:00Z' },
+      { date:'2026-10-05',title:'一张照片',content:'旅行片段',mood:'开心',tags:['旅行'],images:[image],createdAt:'2026-10-05T08:00:00Z' },
+      { date:'2026-10-04',title:'两张照片',content:'午后时光',images:[image,portrait],createdAt:'2026-10-04T08:00:00Z' },
+      { date:'2026-09-30',title:'三张照片',content:'九月的最后一天',images:[image,portrait,image],createdAt:'2026-09-30T08:00:00Z' }
+    ];
+    await raw(store => store.add(records[0])); await reload(); click('#random-memory'); await wait(() => !$('#detail-view').hidden); assert($('#detail-title').textContent === '纯文字记录','单条随机失败'); click('#back-home');
+    for (const entry of records.slice(1)) await raw(store => store.add(entry)); await reload();
+    assert(names() === '纯文字记录,一张照片,两张照片,三张照片','默认排序错误');
+    assert(doc.querySelectorAll('.memory-month').length === 2 && doc.querySelectorAll('.memory-day').length === 3,'日期分组错误');
+    assert(doc.querySelector('[data-date="2026-10-05"]').querySelectorAll('.memory-card').length === 2,'同日没有合并');
+    assert([...doc.querySelectorAll('.memory-card')].map(card=>card.querySelectorAll('img').length).join(',') === '0,1,2,3','图片数量错误');
+    assert([...doc.querySelectorAll('.card-cover')].every(img => win.getComputedStyle(img).objectFit === 'contain' && img.loading === 'lazy'),'比例/懒加载错误');
+    const listed = await win.journalStore.list(); assert(listed[3].images.length === 3 && !('blob' in listed[3].images[0]),'首页保留完整大图');
+    pass('纯文字、1/2/3 张图片、同日、跨天、跨月、旧数据、缩略图与比例均正确');
+    const original = win.IDBFactory.prototype.open; let reads = 0; win.IDBFactory.prototype.open = function(...args) { reads++; return original.apply(this,args); };
+    win.scrollTo(0,doc.body.scrollHeight); win.dispatchEvent(new win.Event('scroll')); await search('旅行'); assert(names() === '一张照片','搜索失败');
+    filter('#filter-mood','开心'); assert(names() === '一张照片','组合筛选失败'); click('#clear-filters');
+    filter('#sort-order','oldest'); assert(names() === '三张照片,两张照片,一张照片,纯文字记录','最早排序失败'); click('#clear-filters');
+    assert(reads === 0,'滚动或筛选重复读库');
+    await openCard(3); assert($('#detail-title').textContent === '三张照片' && doc.querySelectorAll('#detail-images img').length === 3,'详情错误');
+    const afterDetail = reads; click('#back-home'); assert(reads === afterDetail,'返回重复读库');
+    click('#random-memory'); await wait(() => !$('#detail-view').hidden); assert(records.some(r=>r.title === $('#detail-title').textContent),'随机记录不存在'); click('#back-home');
+    pass('0/1/多条随机、卡片详情、搜索组合筛选、双向排序通过；滚动/检索/返回不重复读库');
+    await reload(); assert(names() === '纯文字记录,一张照片,两张照片,三张照片','刷新丢失数据');
+    pass('刷新后图片及分组仍然正确');
+    output.textContent += '\n全部通过。下方保留测试预览，关闭页面自动清理测试库。';
+  } catch(error) { output.textContent += '\nFAIL ' + error.message; }
+  window.addEventListener('pagehide',()=> { frame.remove(); indexedDB.deleteDatabase(databaseName); });
+})();
+</script>

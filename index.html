@@ -4,12 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>开心手帐 Happy Journal</title>
-    <link rel="stylesheet" href="styles/main.css?v=5">
+    <link rel="stylesheet" href="styles/main.css?v=6">
     <script src="scripts/templates.js?v=4" defer></script>
     <script src="scripts/discovery.js?v=5" defer></script>
-    <script src="scripts/storage.js?v=5" defer></script>
+    <script src="scripts/storage.js?v=6" defer></script>
     <script src="scripts/images.js?v=3" defer></script>
-    <script src="scripts/app.js?v=5" defer></script>
+    <script src="scripts/app.js?v=6" defer></script>
   </head>
   <body>
     <header class="site-header">
@@ -21,7 +21,7 @@
       <section id="memories-view" aria-labelledby="memories-title">
         <div class="section-heading">
           <div><p class="eyebrow">生活里的小小片段</p><h1 id="memories-title" tabindex="-1">我的回忆</h1><p class="intro">平凡的一天，也有值得写下的瞬间。</p></div>
-          <button id="new-entry" class="primary" type="button">＋ 记录今天</button>
+          <div class="home-actions"><button id="new-entry" class="primary" type="button">＋ 记录今天</button><button id="random-memory" class="secondary" type="button">随便看看过去</button></div>
         </div>
         <div class="list-heading"><h2>留下的日常 <span id="entry-count">0 篇</span></h2><label class="sort-label" for="sort-order">排序 <select id="sort-order"><option value="newest">最新优先</option><option value="oldest">最早优先</option></select></label></div>
         <div class="discovery-bar">
@@ -36,8 +36,8 @@
         <p id="filter-summary" class="filter-summary" role="status"></p>
         <button id="active-tag" type="button" class="tag-pill" hidden></button>
         <div id="no-results" class="empty-state" hidden><h2>没有找到这段回忆。</h2><p>换个关键词，或清除筛选再看看。</p></div>
-        <div id="empty-state" class="empty-state"><span class="empty-mark" aria-hidden="true">一日一记</span><h2>从今天的一件小事开始</h2><p>一顿喜欢的饭、一次散步，或此刻的心情。<br>不用写得很好，写下就好。</p><button id="first-entry" type="button" class="primary">写下第一篇回忆</button></div>
-        <div id="memory-list" class="memory-grid"></div>
+        <div id="empty-state" class="empty-state"><span class="empty-mark" aria-hidden="true">一日一记</span><h2>还没有回忆，先写下今天吧。</h2><p>一顿喜欢的饭、一次散步，或此刻的心情。<br>不用写得很好，写下就好。</p><button id="first-entry" type="button" class="primary">写下第一篇回忆</button></div>
+        <div id="memory-list" class="memory-feed"></div>
         <p id="home-error" class="field-error" role="alert"></p>
         <button id="retry-load" type="button" class="secondary" hidden>重新读取</button>
       </section>

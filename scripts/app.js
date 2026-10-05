@@ -12,6 +12,7 @@
   const discovery = window.journalDiscovery;
   const tagsInput = $('#entry-tags');
   let selectedTag = '', searchTimer;
+  let homeScroll = 0, returnCard = null;
   const filters = () => ({ query: $('#memory-search').value, mood: $('#filter-mood').value, template: $('#filter-template').value, range: $('#filter-range').value, sort: $('#sort-order').value, tag: selectedTag });
   const visibleEntries = () => discovery.select(entries, filters());
   const templateEditor = templates.createEditor(() => { error.textContent = ''; });
@@ -40,8 +41,7 @@
     ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '旧记录未保存时间';
   function show(view) {
     [home, editor, detail].forEach(section => { section.hidden = section !== view; });
-    if (view !== home) { pictures.clear('home'); $('#memory-list').replaceChildren(); }
-    else { current = null; renderMemories(); }
+    if (view === home) current = null; // 保留信息流 DOM 和图片，返回时继续原来的位置。
     if (view !== editor) { pictures.clear('editor'); $('#image-previews').replaceChildren(); draftImages = []; $('#entry-images').value = ''; }
     if (view !== detail) { pictures.clear('detail'); $('#detail-images').replaceChildren(); }
     status.textContent = '';
@@ -71,19 +71,42 @@
     $('#active-tag').textContent = selectedTag ? `标签：${selectedTag} ×` : '';
     $('#active-tag').setAttribute('aria-label', '取消标签筛选');
     const fragment = document.createDocumentFragment();
+    let monthKey = null, dayKey = null, month, day;
     matches.forEach(entry => {
+      const parsed = /^\d{4}-\d{2}-\d{2}$/.test(entry.date || '') ? new Date(`${entry.date}T12:00:00`) : null;
+      const valid = parsed && Number.isFinite(parsed.getTime());
+      const dateKey = valid ? entry.date : 'unknown';
+      const nextMonth = valid ? entry.date.slice(0, 7) : 'unknown';
+      if (nextMonth !== monthKey) {
+        monthKey = nextMonth; dayKey = null;
+        month = document.createElement('section'); month.className = 'memory-month'; month.dataset.month = monthKey;
+        const heading = document.createElement('h3'); heading.className = 'month-heading';
+        heading.textContent = valid ? `${parsed.getFullYear()}年 · ${parsed.getMonth() + 1}月` : '日期未记录';
+        month.append(heading); fragment.append(month);
+      }
+      if (dateKey !== dayKey) {
+        dayKey = dateKey;
+        day = document.createElement('section'); day.className = 'memory-day'; day.dataset.date = dateKey;
+        const heading = document.createElement('h4'); heading.className = 'day-heading';
+        heading.textContent = valid ? `${parsed.getDate()}日 ${['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'][parsed.getDay()]}` : '那些留在心里的片段';
+        day.append(heading); month.append(day);
+      }
       const item = document.createElement('article'); item.className = 'memory-item';
       const card = document.createElement('button');
-      card.type = 'button'; card.className = 'memory-card';
+      card.type = 'button'; card.className = 'memory-card'; card.dataset.id = entry.id;
       card.setAttribute('aria-label', `查看记录：${entry.title}`);
       if (entry.images.length) {
-        const cover = pictures.picture(entry.images[0], 'home', true);
-        cover.className = 'card-cover'; card.append(cover);
+        const gallery = document.createElement('span'); gallery.className = `card-gallery photos-${entry.images.length}`;
+        entry.images.forEach(image => {
+          const cover = pictures.picture(image, 'home', true);
+          cover.className = 'card-cover'; gallery.append(cover);
+        });
+        card.append(gallery);
       }
       const title = document.createElement('span');
       title.className = 'card-title'; title.textContent = entry.title;
       const created = document.createElement('span');
-      created.className = 'entry-meta'; created.textContent = `创建于 ${timestamp(entry.createdAt)}`;
+      created.className = 'entry-meta'; created.textContent = entry.createdAt && Number.isFinite(Date.parse(entry.createdAt)) ? `写于 ${new Date(entry.createdAt).toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' })}` : '旧记录未保存时间';
       const mood = document.createElement('span');
       mood.className = 'entry-meta'; mood.textContent = moods[entry.mood];
       const template = document.createElement('span'); template.className = 'template-badge';
@@ -99,7 +122,7 @@
         const tags = document.createElement('div'); tags.className = 'tag-list card-tags';
         tagList(tags, entry.tags, true); item.append(tags);
       }
-      fragment.append(item);
+      day.append(item);
     });
     $('#memory-list').append(fragment);
   }
@@ -158,6 +181,7 @@
   }
   async function openDetail(id) {
     if (busy) return;
+    homeScroll = window.scrollY; returnCard = id;
     lock(true); $('#home-error').textContent = '';
     try { renderDetail(await window.journalStore.get(id)); }
     catch {
@@ -222,10 +246,18 @@
   $('#new-entry').addEventListener('click', () => { if (!busy) openForm(); });
   $('#first-entry').addEventListener('click', () => { if (!busy) openForm(); });
   $('#retry-load').addEventListener('click', loadEntries);
+  $('#random-memory').addEventListener('click', () => {
+    if (busy) return;
+    if (!entries.length) { status.textContent = '还没有回忆，先写下今天吧。'; return; }
+    openDetail(entries[Math.floor(Math.random() * entries.length)].id);
+  });
   $('#edit-entry').addEventListener('click', () => { if (!busy && current) openForm(current); });
   $('#back-home').addEventListener('click', () => {
     if (busy) return;
-    editingId = null; show(home); $('#memories-title').focus(); loadEntries();
+    editingId = null; show(home);
+    const card = [...document.querySelectorAll('.memory-card')].find(node => Number(node.dataset.id) === returnCard);
+    (card || $('#memories-title')).focus({ preventScroll: true });
+    window.scrollTo(0, homeScroll);
   });
   contentInput.addEventListener('input', () => { contentInput.setCustomValidity(''); error.textContent = ''; });
   form.addEventListener('submit', async event => {

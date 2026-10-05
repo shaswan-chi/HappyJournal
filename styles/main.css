@@ -136,3 +136,28 @@ button.tag-pill:hover { background: #f0e2bc; }
 .memory-item:hover { border-color: #cdb771; }
 .card-tags { margin: 0; padding: 0 24px 22px; }
 @media (max-width: 420px) { .list-heading { flex-wrap: wrap; } .card-tags { padding-inline: 22px; } }
+
+/* 回忆册：月份页眉、日期分隔、连续单列，图片完整放进相框。 */
+.home-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.home-actions .secondary { font-weight: 400; font-size: 14px; }
+.memory-feed { max-width: 780px; margin: 32px auto; }
+.month-heading { font-family: Georgia, "Microsoft YaHei", serif; font-size: 25px; color: #73633c; font-weight: 500; letter-spacing: 2px; margin: 46px 0 24px; }
+.day-heading { display: flex; align-items: center; gap: 16px; font-size: 15px; font-weight: 500; color: #82713f; margin: 26px 0 18px; }
+.day-heading::after { content: ""; height: 1px; background: #e4dfd1; flex: 1; }
+.memory-feed .memory-item { margin-bottom: 22px; content-visibility: auto; contain-intrinsic-size: auto 340px; }
+.memory-feed .memory-card { padding: 26px; }
+.memory-feed .card-title { font-size: 21px; }
+.memory-feed .card-summary { -webkit-line-clamp: 4; }
+.card-gallery { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 22px; }
+.card-gallery.photos-1 { grid-template-columns: minmax(0, 1fr); }
+.card-gallery.photos-3 .card-cover:first-child { grid-column: 1 / -1; aspect-ratio: 2 / 1; }
+.card-gallery .card-cover { aspect-ratio: 4 / 3; object-fit: contain; margin: 0; border: 1px solid #eee7d7; background: #f5f0e5; }
+.memory-feed .card-tags { padding-inline: 26px; }
+@media (max-width: 600px) {
+  .memory-feed { margin-top: 24px; }
+  .memory-feed .memory-card { padding: 18px; }
+  .memory-feed .card-tags { padding-inline: 18px; }
+  .month-heading { font-size: 22px; }
+  .card-gallery { gap: 6px; }
+  .card-gallery.photos-3 .card-cover:first-child { aspect-ratio: 4 / 3; }
+}
