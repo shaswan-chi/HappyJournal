@@ -8,7 +8,9 @@
   let entries = [], current = null, editingId = null, busy = false, initialForm = '';
   let draftImages = [];
   const pictures = window.journalImages;
-  const snapshot = () => JSON.stringify([titleInput.value, moodInput.value, dateInput.value, contentInput.value, draftImages.map(image => image.id)]);
+  const templates = window.journalTemplates;
+  const templateEditor = templates.createEditor(() => { error.textContent = ''; });
+  const snapshot = () => JSON.stringify([titleInput.value, moodInput.value, dateInput.value, templateEditor.snapshot(), draftImages.map(image => image.id)]);
   const today = () => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -48,11 +50,13 @@
       created.className = 'entry-meta'; created.textContent = `创建于 ${timestamp(entry.createdAt)}`;
       const mood = document.createElement('span');
       mood.className = 'entry-meta'; mood.textContent = moods[entry.mood];
+      const template = document.createElement('span'); template.className = 'template-badge';
+      template.textContent = templates.definitions[entry.templateType].name;
       const content = document.createElement('span');
       content.className = 'memory-content card-summary';
       const characters = Array.from(entry.content);
       content.textContent = characters.slice(0, 100).join('') + (characters.length > 100 ? '…' : '');
-      card.append(title, created, mood, content);
+      card.append(title, created, mood, template, content);
       card.addEventListener('click', () => openDetail(entry.id));
       $('#memory-list').append(card);
     });
@@ -75,11 +79,14 @@
     current = entry;
     $('#detail-title').textContent = entry.title;
     $('#detail-mood').textContent = moods[entry.mood];
+    $('#detail-template').textContent = templates.definitions[entry.templateType].name;
     $('#detail-date').textContent = `记录日期：${entry.date || '未记录'}`;
     $('#detail-created').textContent = `创建于 ${timestamp(entry.createdAt)}`;
     $('#detail-updated').hidden = !entry.updatedAt;
     $('#detail-updated').textContent = entry.updatedAt ? `最后修改于 ${timestamp(entry.updatedAt)}` : '';
     $('#detail-content').textContent = entry.content;
+    $('#detail-content').hidden = entry.templateType !== 'free';
+    templates.renderDetail($('#detail-template-content'), entry);
     pictures.clear('detail'); $('#detail-images').replaceChildren();
     entry.images.forEach((image, index) => {
       const button = document.createElement('button'); button.type = 'button'; button.className = 'image-open';
@@ -112,6 +119,7 @@
     dateInput.value = entry ? entry.date : today();
     dateInput.disabled = !!entry;
     contentInput.value = entry ? entry.content : '';
+    templateEditor.reset(entry);
     draftImages = entry ? [...entry.images] : [];
     $('#image-message').textContent = '';
     contentInput.setCustomValidity(''); error.textContent = '';
@@ -168,20 +176,18 @@
   form.addEventListener('submit', async event => {
     event.preventDefault();
     if (busy || editor.hidden) return;
-    const content = contentInput.value.trim();
-    if (!content) {
-      error.textContent = '请写一点内容，不能只输入空格。';
-      contentInput.setCustomValidity(error.textContent); contentInput.reportValidity(); return;
-    }
+    let template;
+    try { template = templateEditor.collect(); }
+    catch (cause) { error.textContent = cause.message; templateEditor.focus(); return; }
     if (!form.reportValidity()) return;
-    const changes = { title: titleInput.value, mood: moodInput.value, content, images: [...draftImages] };
+    const changes = { title: titleInput.value, mood: moodInput.value, ...template, images: [...draftImages] };
     const isEdit = editingId !== null;
     lock(true); error.textContent = '';
     const save = form.querySelector('[type="submit"]'); save.textContent = '正在保存…';
     let saved;
     try {
       saved = isEdit ? await window.journalStore.update(editingId, changes)
-        : await window.journalStore.add(dateInput.value, content, changes.title, changes.mood, changes.images);
+        : await window.journalStore.add(dateInput.value, changes.content, changes.title, changes.mood, changes.images, template);
     } catch {
       error.textContent = `${isEdit ? '修改' : '保存'}失败，输入内容已保留。请检查本地存储权限、磁盘空间或记录是否仍存在，然后重试。`;
       return;
@@ -206,7 +212,7 @@
     else cancelForm();
   });
   $('#discard-entry').addEventListener('click', cancelForm);
-  $('#keep-writing').addEventListener('click', () => { $('#discard-prompt').hidden = true; contentInput.focus(); });
+  $('#keep-writing').addEventListener('click', () => { $('#discard-prompt').hidden = true; templateEditor.focus(); });
   $('#delete-entry').addEventListener('click', () => {
     if (busy) return;
     $('#detail-error').textContent = ''; $('#delete-prompt').hidden = false; $('#cancel-delete').focus();

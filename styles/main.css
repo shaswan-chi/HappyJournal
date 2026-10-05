@@ -86,3 +86,27 @@ button.memory-card:hover { border-color: #cdb771; }
 #image-viewer::backdrop { background: #25251fcc; }
 #large-image img { display: block; max-width: 100%; max-height: 75vh; object-fit: contain; margin: 16px auto 0; }
 @media (max-width: 420px) { .image-grid { gap: 8px; } }
+/* 模板页签和分节内容使用现有纸张色、暖黄色及边框。 */
+.template-tabs { border: 0; margin: 0; padding: 0; min-width: 0; }
+.template-tabs legend { font-weight: 600; margin-bottom: 12px; }
+.template-options { display: flex; flex-wrap: wrap; gap: 8px; }
+.template-options label { position: relative; margin: 0; cursor: pointer; }
+.template-options input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.template-options span { display: block; margin: 0; padding: 10px 13px; font-size: 14px; border: 1px solid #d5d1c5; border-radius: 10px 10px 3px 3px; background: #faf8f2; }
+.template-options input:checked + span { background: #f4df9b; border-color: #c9ab54; color: #352d19; font-weight: 600; }
+.template-options input:focus-visible + span { outline: 3px solid #80702b; outline-offset: 3px; }
+.template-options input:disabled + span { opacity: .65; cursor: wait; }
+.template-badge { display: inline-block; padding: 2px 8px; margin-top: 6px; border-radius: 5px; background: #f2edde; color: #73633c; font-size: 12px; }
+#template-fields textarea { min-height: 100px; margin-bottom: 22px; }
+.time-row { display: grid; grid-template-columns: 130px minmax(0, 1fr) auto; gap: 10px; align-items: end; border-bottom: 1px solid #e6e0d2; padding-bottom: 18px; margin-bottom: 18px; }
+.time-row input { width: 100%; }
+.time-row label { font-size: 14px; }
+#template-fields .time-row textarea { min-height: 72px; margin: 0; }
+.time-row > button { padding: 10px; font-size: 13px; }
+.template-section { margin-top: 26px; border-top: 1px solid #e6e0d2; padding-top: 18px; }
+.template-section h2 { color: #807047; font-size: 16px; margin: 0 0 10px; }
+.template-section p, .timeline-list p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; line-height: 1.95; }
+.timeline-list { list-style: none; padding: 0; margin: 26px 0; }
+.timeline-list li { display: grid; grid-template-columns: 65px minmax(0, 1fr); gap: 15px; border-left: 2px solid #e6c875; padding: 8px 0 20px 14px; }
+.timeline-list time { color: #807047; font-weight: 600; }
+@media (max-width: 600px) { .time-row { grid-template-columns: minmax(0, 1fr); } .time-row > button { justify-self: start; } }

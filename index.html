@@ -4,10 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>开心手帐 Happy Journal</title>
-    <link rel="stylesheet" href="styles/main.css?v=3">
-    <script src="scripts/storage.js?v=3" defer></script>
+    <link rel="stylesheet" href="styles/main.css?v=4">
+    <script src="scripts/templates.js?v=4" defer></script>
+    <script src="scripts/storage.js?v=4" defer></script>
     <script src="scripts/images.js?v=3" defer></script>
-    <script src="scripts/app.js?v=3" defer></script>
+    <script src="scripts/app.js?v=4" defer></script>
   </head>
   <body>
     <header class="site-header">
@@ -30,6 +31,13 @@
       <section id="entry-view" aria-labelledby="entry-title" hidden>
         <p class="eyebrow">给今天留几句话</p><h1 id="entry-title">写一篇回忆</h1><p class="intro">开心的、平淡的，都可以记在这里。</p>
         <form id="entry-form" class="entry-form">
+          <fieldset class="template-tabs"><legend>选择模板</legend><div class="template-options">
+            <label><input type="radio" name="templateType" value="free" checked><span>自由记录</span></label>
+            <label><input type="radio" name="templateType" value="daily"><span>日常记录</span></label>
+            <label><input type="radio" name="templateType" value="reflection"><span>反思记录</span></label>
+            <label><input type="radio" name="templateType" value="timeline"><span>时间记录</span></label>
+          </div></fieldset>
+          <p id="template-hint" class="field-hint"></p>
           <label for="entry-heading">标题 <span>选填</span></label>
           <input id="entry-heading" name="title" type="text" placeholder="今天的记录">
           <p class="field-hint">留空时显示“今天的记录”。</p>
@@ -39,8 +47,10 @@
           <label for="entry-date">日期 <span>必填</span></label>
           <input id="entry-date" name="date" type="date" required aria-describedby="date-hint">
           <p id="date-hint" class="field-hint">默认是今天，也可以选择想记录的那一天。</p>
-          <label for="entry-content">想记下什么？ <span>必填</span></label>
+          <div id="free-content"><label for="entry-content">想记下什么？ <span>必填</span></label>
           <textarea id="entry-content" name="content" rows="9" required placeholder="今天发生了什么？从一件小事写起……" aria-describedby="content-error"></textarea>
+          </div>
+          <div id="template-fields" hidden></div>
           <p id="content-error" class="field-error" aria-live="polite"></p>
           <label for="entry-images">添加图片 <span>选填</span></label>
           <input id="entry-images" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" multiple aria-describedby="image-hint image-message">
@@ -57,10 +67,12 @@
         <article class="entry-form">
           <h1 id="detail-title" tabindex="-1"></h1>
           <p id="detail-mood" class="entry-meta"></p>
+          <p id="detail-template" class="entry-meta"></p>
           <p id="detail-date" class="entry-meta"></p>
           <p id="detail-created" class="entry-meta"></p>
           <p id="detail-updated" class="entry-meta" hidden></p>
           <p id="detail-content" class="memory-content"></p>
+          <div id="detail-template-content"></div>
           <div id="detail-images" class="image-grid detail-images"></div>
           <div class="form-actions detail-actions"><button id="edit-entry" type="button" class="primary">编辑</button><button id="delete-entry" type="button" class="secondary danger">删除</button></div>
           <div id="delete-prompt" class="discard-prompt" hidden><p>确定删除这篇回忆吗？删除后无法恢复。</p><div class="form-actions"><button id="cancel-delete" type="button" class="secondary">取消删除</button><button id="confirm-delete" type="button" class="secondary danger">确认删除</button></div></div>

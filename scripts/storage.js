@@ -2,6 +2,7 @@
 window.journalStore = (() => {
   const moods = ['开心', '平静', '难过', '焦虑', '期待'];
   const normalize = entry => ({ ...entry,
+    ...window.journalTemplates.normalize(entry),
     title: typeof entry.title === 'string' && entry.title.trim() ? entry.title.trim() : '今天的记录',
     mood: moods.includes(entry.mood) ? entry.mood : '平静',
     content: typeof entry.content === 'string' ? entry.content : '',
@@ -37,9 +38,8 @@ window.journalStore = (() => {
       });
     } finally { db.close(); }
   }
-  const fields = ({ title = '', mood = '平静', content }) => {
-    if (typeof content !== 'string' || !content.trim()) throw new Error('请填写正文。');
-    return { title: String(title).trim() || '今天的记录', mood: moods.includes(mood) ? mood : '平静', content: content.trim() };
+  const fields = ({ title = '', mood = '平静', ...entry }) => {
+    return { title: String(title).trim() || '今天的记录', mood: moods.includes(mood) ? mood : '平静', ...window.journalTemplates.prepare(entry) };
   };
   const imageFields = images => {
     if (!Array.isArray(images) || images.length > 3) throw new Error('每条日记最多保存 3 张图片。');
@@ -51,8 +51,8 @@ window.journalStore = (() => {
   const summary = entry => ({ ...normalize(entry), images: normalize(entry).images.slice(0, 1).map(({ id, name, thumbnail }) => ({ id, name, thumbnail })) });
   return {
     summary,
-    async add(date, content, title = '', mood = '平静', images = []) {
-      const entry = { date, ...fields({ title, mood, content }), images: imageFields(images), createdAt: new Date().toISOString() };
+    async add(date, content, title = '', mood = '平静', images = [], template = {}) {
+      const entry = { date, ...fields({ title, mood, content, ...template }), images: imageFields(images), createdAt: new Date().toISOString() };
       return transaction('readwrite', (store, done) => {
         const request = store.add(entry);
         request.onsuccess = () => done({ ...entry, id: request.result });
@@ -76,16 +76,18 @@ window.journalStore = (() => {
       });
     },
     async update(id, changes) {
-      const values = fields(changes);
+      const values = {};
       if ('images' in changes) values.images = imageFields(changes.images);
       // 在同一个事务内先读取再更新，保留 id、日记日期和原始创建时间。
       return transaction('readwrite', (store, done, fail) => {
         const request = store.get(id);
         request.onsuccess = () => {
           if (!request.result) { fail(new Error('记录已不存在，请返回首页刷新。')); return; }
-          const entry = { ...request.result, ...values, updatedAt: new Date().toISOString() };
-          const write = store.put(entry);
-          write.onsuccess = () => done(normalize(entry));
+          try {
+            const entry = { ...request.result, ...fields({ ...request.result, ...changes }), ...values, updatedAt: new Date().toISOString() };
+            const write = store.put(entry);
+            write.onsuccess = () => done(normalize(entry));
+          } catch (error) { fail(error); }
         };
       });
     },

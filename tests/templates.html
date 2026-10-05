@@ -1,0 +1,144 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>HappyJournal 模板功能回归测试</title>
+<h1>模板功能回归测试</h1>
+<p>使用独立的临时测试数据库，不修改正式日记。刷新此页可重新测试。</p>
+<pre id="result">正在测试…</pre>
+<iframe title="日记测试页面" style="width:100%;height:750px"></iframe>
+<script>
+(async () => {
+  const frame = document.querySelector('iframe'), output = document.querySelector('#result');
+  const databaseName = 'HappyJournal-templates-test-' + Date.now();
+  const logs = [];
+  const assert = (value, message) => { if (!value) throw new Error(message); };
+  const pass = message => { logs.push('PASS ' + message); output.textContent = logs.join('\n'); };
+  const wait = async check => {
+    for (let i = 0; i < 150; i++) {
+      if (await check()) return;
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    throw new Error('界面等待超时');
+  };
+  let win, doc;
+  const $ = selector => doc.querySelector(selector);
+  const click = selector => $(selector).click();
+  // 将正式网页原样装入 iframe，仅将数据库名称替换为独立测试库。
+  const html = await (await fetch('../index.html')).text();
+  const setup = `<script>const originalOpen = IDBFactory.prototype.open; IDBFactory.prototype.open = function(name, version) { return originalOpen.call(this, name === 'HappyJournal' ? ${JSON.stringify(databaseName)} : name, version); };<\/script>`;
+  const fixture = html.replace('<head>', '<head><base href="../">' + setup);
+  async function reload() {
+    const loaded = new Promise(resolve => frame.addEventListener('load', resolve, { once: true }));
+    frame.srcdoc = fixture; await loaded;
+    win = frame.contentWindow; doc = win.document;
+    await wait(() => !$('#new-entry').disabled);
+  }
+  async function raw(action) {
+    const db = await new Promise((resolve, reject) => {
+      const r = indexedDB.open(databaseName, 1); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error);
+    });
+    try { return await new Promise((resolve, reject) => {
+      const tx = db.transaction('entries', 'readwrite'); let result;
+      const request = action(tx.objectStore('entries'));
+      request.onsuccess = () => { result = request.result; };
+      tx.oncomplete = () => resolve(result); tx.onabort = () => reject(tx.error);
+    }); } finally { db.close(); }
+  }
+  const openCard = async index => { doc.querySelectorAll('.memory-card')[index].click(); await wait(() => !$('#detail-view').hidden); };
+  const submit = async () => { $('#entry-form').requestSubmit(); await wait(() => $('#entry-view').hidden || $('#content-error').textContent.includes('失败')); };
+  function abortWrites() {
+    const original = win.IDBDatabase.prototype.transaction;
+    win.IDBDatabase.prototype.transaction = function(...args) {
+      const tx = original.apply(this, args);
+      if (args[1] === 'readwrite') win.queueMicrotask(() => tx.abort());
+      return tx;
+    };
+    return () => { win.IDBDatabase.prototype.transaction = original; };
+  }
+  function choose(type) {
+    const radio = $(`input[name="templateType"][value="${type}"]`);
+    radio.checked = true; radio.dispatchEvent(new win.Event('change', { bubbles: true }));
+  }
+  async function back() { click('#back-home'); await wait(() => !$('#new-entry').disabled); }
+  async function openNamed(name) {
+    const card = [...doc.querySelectorAll('.memory-card')].find(card => card.getAttribute('aria-label') === `查看记录：${name}`);
+    assert(card, '找不到记录：' + name); card.click(); await wait(() => !$('#detail-view').hidden);
+  }
+  const dataFields = (type, value) => win.journalTemplates.definitions[type].fields.forEach(([key]) => { $(`#${type}-${key}`).value = value + key; });
+  try {
+    await reload();
+    const oldId = await raw(store => store.add({ date: '2020-01-01', content: '旧版正文', createdAt: '2020-01-01T00:00:00.000Z' }));
+    await reload(); await openCard(0);
+    assert($('#detail-template').textContent === '自由记录' && $('#detail-content').textContent === '旧版正文', '旧版读取不兼容');
+    click('#edit-entry'); assert($('input[value="free"]').checked && $('#entry-content').value === '旧版正文', '旧版编辑未加载自由记录');
+    $('#entry-content').value = '旧版修改'; await submit(); await reload();
+    assert((await raw(store => store.get(oldId))).content === '旧版修改', '旧版编辑未保存');
+    pass('旧记录作为自由记录显示和编辑，刷新保留');
+    click('#new-entry'); $('#entry-heading').value = '自由测试'; $('#entry-content').value = '自由正文';
+    choose('daily'); $('#daily-happened').value = '切换暂存内容'; choose('free');
+    assert($('#entry-content').value === '自由正文', '切换模板丢失自由正文'); choose('daily');
+    assert($('#daily-happened').value === '切换暂存内容', '切回模板丢失输入'); choose('free'); await submit();
+    pass('切换模板保留本次各模板草稿，只保存当前模板');
+    for (const type of ['daily', 'reflection']) {
+      click('#new-entry'); choose(type); $('#entry-heading').value = type + '测试';
+      assert($('#free-content').hidden && !$('#entry-content').required, '隐藏的自由正文阻挡模板保存');
+      $('#entry-form').requestSubmit(); await wait(() => $('#content-error').textContent.includes('至少'));
+      dataFields(type, '原始内容：'); await submit();
+    }
+    click('#new-entry'); choose('timeline'); $('#entry-heading').value = '时间测试';
+    $('#time-rows input').value = '15:30';
+    $('#entry-form').requestSubmit(); await wait(() => $('#content-error').textContent.includes('有效时间'));
+    $('#time-rows textarea').value = '散步'; click('#add-time-row'); click('#add-time-row'); click('#add-time-row');
+    let rows = [...doc.querySelectorAll('.time-row')];
+    rows[1].querySelector('input').value = '08:30'; rows[1].querySelector('textarea').value = '起床';
+    rows[2].querySelector('input').value = '12:00'; rows[2].querySelector('textarea').value = '午饭';
+    rows[3].querySelector('button').click();
+    assert(doc.querySelectorAll('.time-row').length === 3, '动态行删除失败');
+    await submit(); await reload();
+    assert((await win.journalStore.list()).length === 5, '四种模板或旧记录丢失');
+    pass('四种模板保存刷新后都存在；模板空白与时间缺项校验通过；动态行增删正常');
+    for (const [name, type] of [['自由测试','free'],['daily测试','daily'],['reflection测试','reflection'],['时间测试','timeline']]) {
+      await openNamed(name);
+      const id = (await win.journalStore.list()).find(entry => entry.title === name).id;
+      const before = await raw(store => store.get(id));
+      assert($('#detail-template').textContent === win.journalTemplates.definitions[type].name, '详情模板标记错误');
+      if (type === 'free') assert(!$('#detail-content').hidden && $('#detail-template-content').hidden, '自由详情错误');
+      else if (type === 'timeline') {
+        assert([...doc.querySelectorAll('.timeline-list time')].map(time => time.textContent).join(',') === '08:30,12:00,15:30', '时间未排序');
+      } else assert(doc.querySelectorAll('.template-section').length === win.journalTemplates.definitions[type].fields.length, '分节展示错误');
+      click('#edit-entry'); assert($(`input[value="${type}"]`).checked, '编辑未恢复模板');
+      if (type === 'free') $('#entry-content').value = '修改后的自由正文';
+      else if (type === 'timeline') {
+        const row = $('.time-row'); row.querySelector('input').value = '18:00'; row.querySelector('textarea').value = '修改为晚饭';
+        click('#add-time-row'); const last = [...doc.querySelectorAll('.time-row')].at(-1); last.querySelector('input').value = '07:00'; last.querySelector('textarea').value = '修改新增早起';
+      } else dataFields(type, '修改内容：');
+      let restore = abortWrites(); await submit(); restore();
+      assert($('#content-error').textContent.includes('修改失败') && !$('#entry-view').hidden, '保存失败未保留模板表单');
+      await submit(); await reload(); await openNamed(name);
+      const after = await raw(store => store.get(id));
+      assert(after.createdAt === before.createdAt && after.templateType === type, '修改损坏创建时间或模板类型');
+      assert(after.content.includes('修改'), '模板修改未保存');
+      if (type === 'timeline') assert(after.templateData.rows.map(row => row.time).join(',') === '07:00,12:00,15:30,18:00', '时间编辑后顺序错误');
+      else if (type !== 'free') assert(Object.values(after.templateData).every(value => value.startsWith('修改内容：')), '模板字段编辑未保留');
+      await back();
+    }
+    pass('四种模板详情正确，编辑失败可重试，编辑刷新后字段完整且创建时间不变');
+    // 模板复用上一阶段图片流水线，并在编辑时保留图片。
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = 20;
+    canvas.getContext('2d').fillRect(0, 0, 20, 20);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve));
+    await openNamed('daily测试'); click('#edit-entry');
+    const transfer = new win.DataTransfer(); transfer.items.add(new win.File([blob], 'template.png', { type: 'image/png' }));
+    $('#entry-images').files = transfer.files; $('#entry-images').dispatchEvent(new win.Event('change'));
+    await wait(() => !$('#entry-images').disabled); await submit(); await reload(); await openNamed('daily测试');
+    assert(doc.querySelectorAll('#detail-images img').length === 1, '模板图片未保留');
+    click('#edit-entry'); $('#daily-happy').value = '保留图片再修改'; await submit(); await reload(); await openNamed('daily测试');
+    assert(doc.querySelectorAll('#detail-images img').length === 1 && $('#detail-template-content').textContent.includes('保留图片再修改'), '模板文字编辑丢失图片');
+    pass('模板支持原有图片功能，修改模板文字不会丢图');
+    click('#edit-entry'); choose('reflection'); $('#reflection-concern').value = '新模板草稿'; click('#cancel-entry'); click('#discard-entry');
+    assert($('#detail-template').textContent === '日常记录', '放弃切换后改变了已保存模板');
+    pass('放弃编辑不会改变已保存的模板与内容');
+    output.textContent += '\n全部通过。';
+  } catch (error) { output.textContent += '\nFAIL ' + error.message; }
+  finally { frame.remove(); indexedDB.deleteDatabase(databaseName); }
+})();
+</script>
