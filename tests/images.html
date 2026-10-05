@@ -1,0 +1,142 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>HappyJournal 图片功能回归测试</title>
+<h1>图片功能回归测试</h1>
+<p>使用独立的临时测试数据库，不修改正式日记。刷新此页可重新测试。</p>
+<pre id="result">正在测试…</pre>
+<iframe title="日记测试页面" style="width:100%;height:750px"></iframe>
+<script>
+(async () => {
+  const frame = document.querySelector('iframe'), output = document.querySelector('#result');
+  const databaseName = 'HappyJournal-images-test-' + Date.now();
+  const logs = [];
+  const assert = (value, message) => { if (!value) throw new Error(message); };
+  const pass = message => { logs.push('PASS ' + message); output.textContent = logs.join('\n'); };
+  const wait = async check => {
+    for (let i = 0; i < 150; i++) {
+      if (await check()) return;
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    throw new Error('界面等待超时');
+  };
+  let win, doc;
+  const $ = selector => doc.querySelector(selector);
+  const click = selector => $(selector).click();
+  // 将正式网页原样装入 iframe，仅将数据库名称替换为独立测试库。
+  const html = await (await fetch('../index.html')).text();
+  const setup = `<script>const originalOpen = IDBFactory.prototype.open; IDBFactory.prototype.open = function(name, version) { return originalOpen.call(this, name === 'HappyJournal' ? ${JSON.stringify(databaseName)} : name, version); };<\/script>`;
+  const fixture = html.replace('<head>', '<head><base href="../">' + setup);
+  async function reload() {
+    const loaded = new Promise(resolve => frame.addEventListener('load', resolve, { once: true }));
+    frame.srcdoc = fixture; await loaded;
+    win = frame.contentWindow; doc = win.document;
+    await wait(() => !$('#new-entry').disabled);
+  }
+  async function raw(action) {
+    const db = await new Promise((resolve, reject) => {
+      const r = indexedDB.open(databaseName, 1); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error);
+    });
+    try { return await new Promise((resolve, reject) => {
+      const tx = db.transaction('entries', 'readwrite'); let result;
+      const request = action(tx.objectStore('entries'));
+      request.onsuccess = () => { result = request.result; };
+      tx.oncomplete = () => resolve(result); tx.onabort = () => reject(tx.error);
+    }); } finally { db.close(); }
+  }
+  const openCard = async index => { doc.querySelectorAll('.memory-card')[index].click(); await wait(() => !$('#detail-view').hidden); };
+  const submit = async () => { $('#entry-form').requestSubmit(); await wait(() => $('#entry-view').hidden || $('#content-error').textContent.includes('失败')); };
+  function abortWrites() {
+    const original = win.IDBDatabase.prototype.transaction;
+    win.IDBDatabase.prototype.transaction = function(...args) {
+      const tx = original.apply(this, args);
+      if (args[1] === 'readwrite') win.queueMicrotask(() => tx.abort());
+      return tx;
+    };
+    return () => { win.IDBDatabase.prototype.transaction = original; };
+  }
+  const makeFile = async (name, color, type = 'image/png', width = 2400, height = 1200) => {
+    const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
+    const context = canvas.getContext('2d'); context.fillStyle = color; context.fillRect(0, 0, width, height);
+    context.fillStyle = '#fff'; context.font = '100px sans-serif'; context.fillText(name, 80, 160);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, type));
+    canvas.width = canvas.height = 0;
+    return new File([blob], name, { type });
+  };
+  async function select(files) {
+    const transfer = new win.DataTransfer(); files.forEach(file => transfer.items.add(file));
+    $('#entry-images').files = transfer.files;
+    $('#entry-images').dispatchEvent(new win.Event('change', { bubbles: true }));
+    await wait(() => !$('#entry-images').disabled && !$('#image-message').textContent.includes('正在处理'));
+  }
+  async function imagesLoaded(selector) {
+    await wait(() => Array.from(doc.querySelectorAll(selector)).every(img => img.complete && img.naturalWidth > 0));
+  }
+  async function back() { click('#back-home'); await wait(() => !$('#new-entry').disabled); }
+  try {
+    await reload();
+    const oldId = await raw(store => store.add({ date: '2020-01-01', content: '无图旧记录', createdAt: '2020-01-01T00:00:00.000Z' }));
+    await reload(); assert(!$('.card-cover'), '旧记录错误显示封面');
+    await openCard(0); assert(!$('#detail-images img'), '旧详情无图兼容失败'); await back();
+    pass('旧版无图片字段记录正常显示');
+    const red = await makeFile('red.png', '#a65c50');
+    const green = await makeFile('green.jpg', '#647b5a', 'image/jpeg');
+    const blue = await makeFile('blue.webp', '#516e87', 'image/webp');
+    const gold = await makeFile('gold.png', '#b58e49');
+    click('#new-entry'); $('#entry-heading').value = '一张图片测试'; $('#entry-content').value = '一张图片正文';
+    await select([red]); assert(doc.querySelectorAll('#image-previews img').length === 1, '预览未出现'); await imagesLoaded('#image-previews img');
+    await submit(); await reload(); await imagesLoaded('.card-cover');
+    const first = (await win.journalStore.list()).find(entry => entry.title === '一张图片测试');
+    const stored = await raw(store => store.get(first.id));
+    assert(stored.images[0].blob instanceof Blob && stored.images[0].blob.size > 0 && stored.images[0].width === 1600, '没有保存缩小后的真实 Blob');
+    assert(!('blob' in first.images[0]), '首页列表包含完整图片');
+    pass('新增 1 张图片并刷新，封面正常；数据库保存 Blob 和缩略图，长边缩至 1600');
+    click('#new-entry'); $('#entry-heading').value = '三张图片测试'; $('#entry-content').value = '三张图片正文';
+    await select([red, green, blue, gold]);
+    assert(doc.querySelectorAll('#image-previews img').length === 3 && $('#image-message').textContent.includes('最多 3 张'), '3 张数量限制失败');
+    await submit(); await reload(); await openCard(0); await imagesLoaded('#detail-images img');
+    assert(doc.querySelectorAll('#detail-images img').length === 3, '详情没有显示 3 张图片');
+    click('#detail-images button'); await imagesLoaded('#large-image img'); assert($('#image-viewer').open, '不能放大'); click('#close-image');
+    const three = (await win.journalStore.list()).find(entry => entry.title === '三张图片测试');
+    pass('3 种格式图片均可保存；最多 3 张；详情全部显示且可点击放大');
+    click('#edit-entry'); assert(doc.querySelectorAll('#image-previews img').length === 3, '编辑未显示原图');
+    doc.querySelectorAll('#image-previews button')[1].click(); await select([gold]);
+    let restore = abortWrites(); await submit(); restore();
+    assert(!$('#entry-view').hidden && doc.querySelectorAll('#image-previews img').length === 3, '保存失败清空图片');
+    const failed = await raw(store => store.get(three.id)); assert(failed.images[1].name === 'green.jpg', '失败事务修改了图片');
+    pass('图片编辑保存失败保留输入，原数据库图片不变');
+    await submit(); await reload(); await openCard(0); await imagesLoaded('#detail-images img');
+    const edited = await raw(store => store.get(three.id));
+    assert(edited.images.map(i => i.name).join(',') === 'red.png,blue.webp,gold.png', '修改图片后刷新不一致');
+    assert(edited.createdAt === three.createdAt, '原创建时间被改变');
+    pass('编辑移除一张再添加一张，刷新后图片顺序和内容正确');
+    click('#edit-entry'); doc.querySelectorAll('#image-previews button')[0].click(); click('#cancel-entry'); click('#discard-entry');
+    assert((await raw(store => store.get(three.id))).images.length === 3, '取消编辑仍保存了移除');
+    pass('取消图片编辑不改动持久数据');
+    click('#delete-entry'); click('#confirm-delete'); await wait(() => !$('#memories-view').hidden); await reload();
+    assert(!(await raw(store => store.get(three.id))), '删除记录后仍留下记录或图片');
+    pass('删除带图日记后刷新不恢复，内嵌图片随记录一并删除');
+    // 超限、伪造文件、GIF、APNG 和动画 WebP 均不能进入数据库。
+    click('#new-entry'); $('#entry-content').value = '错误图片也不应阻止保存文字'; $('#entry-heading').value = '错误图片测试';
+    await select([new File([new Uint8Array(5 * 1024 * 1024 + 1)], 'large.png', { type: 'image/png' })]);
+    assert($('#image-message').textContent.includes('超过 5MB'), '大文件没有提示');
+    await select([new File(['not an image'], 'bad.png', { type: 'image/png' })]);
+    assert(doc.querySelectorAll('#image-previews img').length === 0, '伪造图片被接收');
+    const apng = new Uint8Array(20); apng.set([137,80,78,71,13,10,26,10]); apng.set([97,99,84,76], 12);
+    const webp = new Uint8Array(22); webp.set([82,73,70,70],0); webp.set([87,69,66,80,86,80,56,88,2,0,0,0,2,0],8);
+    await select([new File([apng], 'animated.png'), new File([webp], 'animated.webp'), new File(['GIF89a'], 'animated.gif')]);
+    assert(doc.querySelectorAll('#image-previews img').length === 0 && $('#image-message').textContent.includes('动图'), '动画限制失败');
+    await select([new File([new Uint8Array([255,216,255,0])], 'broken.jpg'), green]);
+    assert(doc.querySelectorAll('#image-previews img').length === 1 && $('#image-message').textContent.includes('读取失败'), '失败图片妨碍了其他有效图片');
+    await submit(); await reload();
+    const mixed = (await win.journalStore.list()).find(entry => entry.title === '错误图片测试');
+    assert((await raw(store => store.get(mixed.id))).images.length === 1, '有效图片未随正文保存');
+    pass('超 5MB、伪装图片和动图被拒绝；损坏图片跳过，其他图片及正文仍可保存');
+    await openCard(0); click('#edit-entry'); click('#image-previews button'); await submit(); await reload();
+    assert((await raw(store => store.get(mixed.id))).images.length === 0 && !$('.memory-card:first-child .card-cover'), '移除全部图片失败');
+    assert((await raw(store => store.get(oldId))).content === '无图旧记录', '旧记录被改动');
+    pass('移除全部图片后恢复文字卡片；无图旧记录完整保留');
+    output.textContent += '\n全部通过。';
+  } catch (error) { output.textContent += '\nFAIL ' + error.message; }
+  finally { frame.remove(); indexedDB.deleteDatabase(databaseName); }
+})();
+</script>

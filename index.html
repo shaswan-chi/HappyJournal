@@ -4,9 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>开心手帐 Happy Journal</title>
-    <link rel="stylesheet" href="styles/main.css?v=2">
-    <script src="scripts/storage.js?v=2" defer></script>
-    <script src="scripts/app.js?v=2" defer></script>
+    <link rel="stylesheet" href="styles/main.css?v=3">
+    <script src="scripts/storage.js?v=3" defer></script>
+    <script src="scripts/images.js?v=3" defer></script>
+    <script src="scripts/app.js?v=3" defer></script>
   </head>
   <body>
     <header class="site-header">
@@ -41,6 +42,11 @@
           <label for="entry-content">想记下什么？ <span>必填</span></label>
           <textarea id="entry-content" name="content" rows="9" required placeholder="今天发生了什么？从一件小事写起……" aria-describedby="content-error"></textarea>
           <p id="content-error" class="field-error" aria-live="polite"></p>
+          <label for="entry-images">添加图片 <span>选填</span></label>
+          <input id="entry-images" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" multiple aria-describedby="image-hint image-message">
+          <p id="image-hint" class="field-hint">最多 3 张静态图片，每张原图不超过 5MB。保存前自动缩小压缩，仅保存在本机。</p>
+          <p id="image-message" class="field-error" role="status"></p>
+          <div id="image-previews" class="image-grid"></div>
           <div class="form-actions"><button type="submit" class="primary">保存回忆</button><button id="cancel-entry" type="button" class="secondary">取消</button></div>
           <div id="discard-prompt" class="discard-prompt" hidden><p>这篇回忆还没保存，要放弃吗？</p><div class="form-actions"><button id="keep-writing" type="button" class="secondary">继续填写</button><button id="discard-entry" type="button" class="secondary">放弃内容</button></div></div>
           <p class="field-hint">保存后会显示在“我的回忆”，并保留在当前浏览器中。</p>
@@ -55,6 +61,7 @@
           <p id="detail-created" class="entry-meta"></p>
           <p id="detail-updated" class="entry-meta" hidden></p>
           <p id="detail-content" class="memory-content"></p>
+          <div id="detail-images" class="image-grid detail-images"></div>
           <div class="form-actions detail-actions"><button id="edit-entry" type="button" class="primary">编辑</button><button id="delete-entry" type="button" class="secondary danger">删除</button></div>
           <div id="delete-prompt" class="discard-prompt" hidden><p>确定删除这篇回忆吗？删除后无法恢复。</p><div class="form-actions"><button id="cancel-delete" type="button" class="secondary">取消删除</button><button id="confirm-delete" type="button" class="secondary danger">确认删除</button></div></div>
           <p id="detail-error" class="field-error" role="alert"></p>
@@ -63,6 +70,7 @@
       <p id="save-status" class="save-status" role="status"></p>
       <noscript><p>请开启浏览器的 JavaScript，才能输入和保存回忆。</p></noscript>
     </main>
+    <dialog id="image-viewer" aria-label="图片大图预览"><button id="close-image" type="button" class="secondary">关闭图片</button><div id="large-image"></div></dialog>
     <footer>开心手帐 · 慢慢记录，好好生活</footer>
   </body>
 </html>

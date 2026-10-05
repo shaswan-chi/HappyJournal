@@ -72,3 +72,17 @@ button.memory-card:hover { border-color: #cdb771; }
 .detail-actions { margin-top: 28px; }
 .form-actions { flex-wrap: wrap; }
 .danger { color: #a33c29; }
+/* 图片沿用现有卡片边框与圆角。封面定比例裁切，大图完整显示。 */
+.card-cover { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 8px; margin-bottom: 16px; background: #f2edde; }
+#entry-images { width: 100%; font-size: 14px; }
+#image-message { overflow-wrap: anywhere; }
+.image-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
+.image-grid:empty { display: none; }
+.image-grid figure { margin: 0; min-width: 0; }
+.image-grid img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; background: #f2edde; border-radius: 8px; }
+.image-grid figure button { width: 100%; font-size: 12px; padding: 8px 4px; margin-top: 6px; }
+.image-open { padding: 0; background: transparent; border-radius: 8px; }
+#image-viewer { width: min(960px, 94vw); max-height: 92vh; padding: 18px; border: 1px solid #d8cfb7; border-radius: 14px; background: #fffefa; }
+#image-viewer::backdrop { background: #25251fcc; }
+#large-image img { display: block; max-width: 100%; max-height: 75vh; object-fit: contain; margin: 16px auto 0; }
+@media (max-width: 420px) { .image-grid { gap: 8px; } }

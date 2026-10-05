@@ -4,7 +4,8 @@ window.journalStore = (() => {
   const normalize = entry => ({ ...entry,
     title: typeof entry.title === 'string' && entry.title.trim() ? entry.title.trim() : '今天的记录',
     mood: moods.includes(entry.mood) ? entry.mood : '平静',
-    content: typeof entry.content === 'string' ? entry.content : ''
+    content: typeof entry.content === 'string' ? entry.content : '',
+    images: Array.isArray(entry.images) ? entry.images : []
   });
   function openDatabase() {
     return new Promise((resolve, reject) => {
@@ -40,9 +41,18 @@ window.journalStore = (() => {
     if (typeof content !== 'string' || !content.trim()) throw new Error('请填写正文。');
     return { title: String(title).trim() || '今天的记录', mood: moods.includes(mood) ? mood : '平静', content: content.trim() };
   };
+  const imageFields = images => {
+    if (!Array.isArray(images) || images.length > 3) throw new Error('每条日记最多保存 3 张图片。');
+    if (images.some(image => !(image.blob instanceof Blob) || !(image.thumbnail instanceof Blob)
+      || image.blob.size > 2 * 1024 * 1024 || image.thumbnail.size > 512 * 1024)) throw new Error('图片数据无效或过大。');
+    return images;
+  };
+  // 首页只保留封面缩略图引用，详情和编辑时再读取完整图片。
+  const summary = entry => ({ ...normalize(entry), images: normalize(entry).images.slice(0, 1).map(({ id, name, thumbnail }) => ({ id, name, thumbnail })) });
   return {
-    async add(date, content, title = '', mood = '平静') {
-      const entry = { date, ...fields({ title, mood, content }), createdAt: new Date().toISOString() };
+    summary,
+    async add(date, content, title = '', mood = '平静', images = []) {
+      const entry = { date, ...fields({ title, mood, content }), images: imageFields(images), createdAt: new Date().toISOString() };
       return transaction('readwrite', (store, done) => {
         const request = store.add(entry);
         request.onsuccess = () => done({ ...entry, id: request.result });
@@ -50,9 +60,13 @@ window.journalStore = (() => {
     },
     async list() {
       return transaction('readonly', (store, done) => {
-        const request = store.getAll();
-        request.onsuccess = () => done(request.result.map(normalize).sort((a, b) =>
-          String(b.date || '').localeCompare(String(a.date || '')) || b.id - a.id));
+        const entries = [];
+        const request = store.openCursor();
+        request.onsuccess = () => {
+          const cursor = request.result;
+          if (cursor) { entries.push(summary(cursor.value)); cursor.continue(); }
+          else done(entries.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')) || b.id - a.id));
+        };
       });
     },
     async get(id) {
@@ -63,6 +77,7 @@ window.journalStore = (() => {
     },
     async update(id, changes) {
       const values = fields(changes);
+      if ('images' in changes) values.images = imageFields(changes.images);
       // 在同一个事务内先读取再更新，保留 id、日记日期和原始创建时间。
       return transaction('readwrite', (store, done, fail) => {
         const request = store.get(id);

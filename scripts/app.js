@@ -6,7 +6,9 @@
   const error = $('#content-error'), status = $('#save-status');
   const moods = { 开心: '😊 开心', 平静: '🌿 平静', 难过: '😔 难过', 焦虑: '😟 焦虑', 期待: '✨ 期待' };
   let entries = [], current = null, editingId = null, busy = false, initialForm = '';
-  const snapshot = () => JSON.stringify([titleInput.value, moodInput.value, dateInput.value, contentInput.value]);
+  let draftImages = [];
+  const pictures = window.journalImages;
+  const snapshot = () => JSON.stringify([titleInput.value, moodInput.value, dateInput.value, contentInput.value, draftImages.map(image => image.id)]);
   const today = () => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -15,6 +17,10 @@
     ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '旧记录未保存时间';
   function show(view) {
     [home, editor, detail].forEach(section => { section.hidden = section !== view; });
+    if (view !== home) { pictures.clear('home'); $('#memory-list').replaceChildren(); }
+    else { current = null; renderMemories(); }
+    if (view !== editor) { pictures.clear('editor'); $('#image-previews').replaceChildren(); draftImages = []; $('#entry-images').value = ''; }
+    if (view !== detail) { pictures.clear('detail'); $('#detail-images').replaceChildren(); }
     status.textContent = '';
   }
   function lock(value) {
@@ -23,6 +29,7 @@
     dateInput.disabled = value || editingId !== null;
   }
   function renderMemories() {
+    pictures.clear('home');
     entries.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')) || b.id - a.id);
     $('#memory-list').replaceChildren();
     $('#empty-state').hidden = entries.length > 0;
@@ -31,6 +38,10 @@
       const card = document.createElement('button');
       card.type = 'button'; card.className = 'memory-card';
       card.setAttribute('aria-label', `查看记录：${entry.title}`);
+      if (entry.images.length) {
+        const cover = pictures.picture(entry.images[0], 'home', true);
+        cover.className = 'card-cover'; card.append(cover);
+      }
       const title = document.createElement('span');
       title.className = 'card-title'; title.textContent = entry.title;
       const created = document.createElement('span');
@@ -69,6 +80,17 @@
     $('#detail-updated').hidden = !entry.updatedAt;
     $('#detail-updated').textContent = entry.updatedAt ? `最后修改于 ${timestamp(entry.updatedAt)}` : '';
     $('#detail-content').textContent = entry.content;
+    pictures.clear('detail'); $('#detail-images').replaceChildren();
+    entry.images.forEach((image, index) => {
+      const button = document.createElement('button'); button.type = 'button'; button.className = 'image-open';
+      button.setAttribute('aria-label', `放大图片 ${index + 1}`);
+      button.append(pictures.picture(image, 'detail', true));
+      button.addEventListener('click', () => {
+        pictures.clear('viewer'); $('#large-image').replaceChildren(pictures.picture(image, 'viewer'));
+        $('#image-viewer').showModal();
+      });
+      $('#detail-images').append(button);
+    });
     $('#detail-error').textContent = '';
     $('#delete-prompt').hidden = true;
     show(detail); $('#detail-title').focus();
@@ -90,13 +112,50 @@
     dateInput.value = entry ? entry.date : today();
     dateInput.disabled = !!entry;
     contentInput.value = entry ? entry.content : '';
+    draftImages = entry ? [...entry.images] : [];
+    $('#image-message').textContent = '';
     contentInput.setCustomValidity(''); error.textContent = '';
     $('#entry-title').textContent = entry ? '编辑回忆' : '写一篇回忆';
     form.querySelector('[type="submit"]').textContent = entry ? '保存修改' : '保存回忆';
     $('#date-hint').textContent = entry ? '编辑保留原来的记录日期和创建时间。' : '默认是今天，也可以选择想记录的那一天。';
     $('#discard-prompt').hidden = true;
-    initialForm = snapshot(); show(editor); titleInput.focus();
+    initialForm = snapshot(); show(editor); renderImagePreviews(); titleInput.focus();
   }
+  function renderImagePreviews() {
+    pictures.clear('editor'); $('#image-previews').replaceChildren();
+    draftImages.forEach((image, index) => {
+      const figure = document.createElement('figure');
+      const preview = pictures.picture(image, 'editor', true);
+      const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'secondary';
+      remove.textContent = `移除图片 ${index + 1}`;
+      remove.addEventListener('click', () => {
+        if (busy) return;
+        draftImages.splice(index, 1); renderImagePreviews();
+        $('#image-message').textContent = `已移除图片，当前 ${draftImages.length}/3 张；保存后生效。`;
+        $('#entry-images').focus();
+      });
+      figure.append(preview, remove); $('#image-previews').append(figure);
+    });
+  }
+  $('#entry-images').addEventListener('change', async event => {
+    if (busy) return;
+    const files = Array.from(event.target.files); event.target.value = '';
+    if (!files.length) return;
+    lock(true); const messages = []; $('#image-message').textContent = '正在处理图片…';
+    try {
+      // 逐张解码，损坏文件单独跳过，不影响其他图片或正文保存。
+      for (const file of files) {
+        if (draftImages.length >= 3) { messages.push('每条日记最多 3 张，剩余图片未添加。'); break; }
+        try { draftImages.push(await pictures.prepare(file)); }
+        catch (cause) { messages.push(`${file.name}：${cause.message || '读取失败，请重新选择图片'}。`); }
+      }
+    } finally {
+      lock(false); renderImagePreviews();
+      $('#image-message').textContent = `已选择 ${draftImages.length}/3 张。${messages.join(' ')}${messages.length ? '未添加的图片不影响保存正文。' : ''}`;
+    }
+  });
+  $('#close-image').addEventListener('click', () => $('#image-viewer').close());
+  $('#image-viewer').addEventListener('close', () => { pictures.clear('viewer'); $('#large-image').replaceChildren(); });
   $('#new-entry').addEventListener('click', () => { if (!busy) openForm(); });
   $('#first-entry').addEventListener('click', () => { if (!busy) openForm(); });
   $('#retry-load').addEventListener('click', loadEntries);
@@ -115,20 +174,20 @@
       contentInput.setCustomValidity(error.textContent); contentInput.reportValidity(); return;
     }
     if (!form.reportValidity()) return;
-    const changes = { title: titleInput.value, mood: moodInput.value, content };
+    const changes = { title: titleInput.value, mood: moodInput.value, content, images: [...draftImages] };
     const isEdit = editingId !== null;
     lock(true); error.textContent = '';
     const save = form.querySelector('[type="submit"]'); save.textContent = '正在保存…';
     let saved;
     try {
       saved = isEdit ? await window.journalStore.update(editingId, changes)
-        : await window.journalStore.add(dateInput.value, content, changes.title, changes.mood);
+        : await window.journalStore.add(dateInput.value, content, changes.title, changes.mood, changes.images);
     } catch {
       error.textContent = `${isEdit ? '修改' : '保存'}失败，输入内容已保留。请检查本地存储权限、磁盘空间或记录是否仍存在，然后重试。`;
       return;
     } finally { lock(false); save.textContent = isEdit ? '保存修改' : '保存回忆'; }
-    if (isEdit) entries = entries.map(entry => entry.id === saved.id ? saved : entry);
-    else entries.push(saved);
+    if (isEdit) entries = entries.map(entry => entry.id === saved.id ? window.journalStore.summary(saved) : entry);
+    else entries.push(window.journalStore.summary(saved));
     renderMemories(); form.reset(); editingId = null;
     if (isEdit) renderDetail(saved);
     else { show(home); $('#memories-title').focus(); }
