@@ -9,6 +9,9 @@
   const discardPrompt = document.querySelector('#discard-prompt');
   let openingDate = '';
   let opener;
+  let entries = [];
+  let saving = false;
+  const saveButton = form.querySelector('button[type="submit"]');
 
   function localToday() {
     const now = new Date();
@@ -16,7 +19,7 @@
   }
 
   function renderMemories() {
-    const entries = window.journalStore.list();
+    entries.sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
     const list = document.querySelector('#memory-list');
     list.replaceChildren();
     document.querySelector('#empty-state').hidden = entries.length > 0;
@@ -27,6 +30,7 @@
       const heading = document.createElement('h3');
       const date = document.createElement('time');
       date.dateTime = entry.date;
+      date.title = `创建于 ${new Date(entry.createdAt).toLocaleString('zh-CN')}`;
       const [year, month, day] = entry.date.split('-');
       date.textContent = `${year}年${Number(month)}月${Number(day)}日`;
       heading.append(date);
@@ -61,9 +65,9 @@
     contentInput.setCustomValidity('');
     error.textContent = '';
   });
-  form.addEventListener('submit', event => {
+  form.addEventListener('submit', async event => {
     event.preventDefault();
-    if (editor.hidden) return;
+    if (editor.hidden || saving) return;
     const content = contentInput.value.trim();
     if (!content) {
       error.textContent = '请写一点内容，不能只输入空格。';
@@ -72,12 +76,28 @@
       return;
     }
     if (!form.reportValidity()) return;
-    window.journalStore.add(dateInput.value, content);
+    saving = true;
+    error.textContent = '';
+    const controls = Array.from(form.querySelectorAll('input, textarea, button'));
+    controls.forEach(control => { control.disabled = true; });
+    saveButton.textContent = '正在保存…';
+    let entry;
+    try {
+      entry = await window.journalStore.add(dateInput.value, content);
+    } catch (cause) {
+      error.textContent = '保存失败，输入内容已保留。请检查浏览器是否允许本地存储、磁盘空间是否充足，然后重试。';
+      return;
+    } finally {
+      saving = false;
+      controls.forEach(control => { control.disabled = false; });
+      saveButton.textContent = '保存回忆';
+    }
+    entries.push(entry);
     renderMemories();
     form.reset();
     showHome();
     document.querySelector('#memories-title').focus();
-    status.textContent = '已保存到当前页面。刷新或关闭后，记录会消失。';
+    status.textContent = '已保存到当前浏览器。刷新或关闭后重新打开，记录仍会保留。';
   });
   function discardEntry() {
     form.reset();
@@ -98,5 +118,16 @@
     contentInput.focus();
   });
   form.reset();
-  renderMemories();
+  const entryButtons = [document.querySelector('#new-entry'), document.querySelector('#first-entry')];
+  entryButtons.forEach(button => { button.disabled = true; });
+  document.querySelector('#empty-state').hidden = true;
+  status.textContent = '正在读取已保存的回忆…';
+  window.journalStore.list().then(savedEntries => {
+    entries = savedEntries;
+    renderMemories();
+    status.textContent = '';
+    entryButtons.forEach(button => { button.disabled = false; });
+  }).catch(() => {
+    status.textContent = '读取记录失败，未改动已保存的数据。请检查浏览器本地存储权限，关闭其他手帐页面后刷新重试。';
+  });
 })();

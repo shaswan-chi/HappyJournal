@@ -1,0 +1,52 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>HappyJournal 保存失败测试</title>
+<h1>保存失败测试</h1>
+<pre id="result">正在测试…</pre>
+<iframe src="../index.html" title="正式项目测试页面" style="width:100%;height:650px"></iframe>
+<script>
+// 只在测试 iframe 内中止写入事务，不修改正式页面代码或已有记录。
+const frame = document.querySelector('iframe');
+const result = document.querySelector('#result');
+const waitFor = async (check) => {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    if (check()) return;
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  throw new Error('等待界面响应超时');
+};
+frame.addEventListener('load', async () => {
+  const win = frame.contentWindow;
+  const doc = win.document;
+  const assert = (value, message) => { if (!value) throw new Error(message); };
+  let original;
+  try {
+    await waitFor(() => !doc.querySelector('#new-entry').disabled);
+    const before = await win.journalStore.list();
+    doc.querySelector('#new-entry').click();
+    const draft = '测试：保存失败时请保留这段输入。';
+    doc.querySelector('#entry-content').value = draft;
+    const chosenDate = doc.querySelector('#entry-date').value;
+    original = win.IDBDatabase.prototype.transaction;
+    win.IDBDatabase.prototype.transaction = function (...args) {
+      const tx = original.apply(this, args);
+      if (args[1] === 'readwrite') win.setTimeout(() => tx.abort(), 0);
+      return tx;
+    };
+    doc.querySelector('#entry-form').requestSubmit();
+    await waitFor(() => doc.querySelector('#content-error').textContent.includes('保存失败'));
+    win.IDBDatabase.prototype.transaction = original;
+    assert(!doc.querySelector('#entry-view').hidden, '失败后离开了表单');
+    assert(doc.querySelector('#entry-content').value === draft, '输入文字被清空');
+    assert(doc.querySelector('#entry-date').value === chosenDate, '日期被清空');
+    assert(!doc.querySelector('button[type="submit"]').disabled, '不能重新保存');
+    assert((await win.journalStore.list()).length === before.length, '失败操作新增了记录');
+    assert(before.every(entry => Number.isFinite(Date.parse(entry.createdAt))), '创建时间缺失');
+    result.textContent = 'PASS：事务失败有提示；文字和日期保留；可重试；没有新增记录；已有记录含创建日期和时间。';
+  } catch (error) {
+    result.textContent = 'FAIL：' + error.message;
+  } finally {
+    if (original) win.IDBDatabase.prototype.transaction = original;
+  }
+});
+</script>
