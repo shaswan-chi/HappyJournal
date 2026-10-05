@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>开心手帐 Happy Journal</title>
-    <link rel="stylesheet" href="styles/main.css">
-    <script src="scripts/storage.js" defer></script>
-    <script src="scripts/app.js" defer></script>
+    <link rel="stylesheet" href="styles/main.css?v=2">
+    <script src="scripts/storage.js?v=2" defer></script>
+    <script src="scripts/app.js?v=2" defer></script>
   </head>
   <body>
     <header class="site-header">
@@ -23,10 +23,18 @@
         <div class="list-heading"><h2>留下的日常 <span id="entry-count">0 篇</span></h2><span>按日期从新到旧</span></div>
         <div id="empty-state" class="empty-state"><span class="empty-mark" aria-hidden="true">一日一记</span><h2>从今天的一件小事开始</h2><p>一顿喜欢的饭、一次散步，或此刻的心情。<br>不用写得很好，写下就好。</p><button id="first-entry" type="button" class="primary">写下第一篇回忆</button></div>
         <div id="memory-list" class="memory-grid"></div>
+        <p id="home-error" class="field-error" role="alert"></p>
+        <button id="retry-load" type="button" class="secondary" hidden>重新读取</button>
       </section>
       <section id="entry-view" aria-labelledby="entry-title" hidden>
         <p class="eyebrow">给今天留几句话</p><h1 id="entry-title">写一篇回忆</h1><p class="intro">开心的、平淡的，都可以记在这里。</p>
         <form id="entry-form" class="entry-form">
+          <label for="entry-heading">标题 <span>选填</span></label>
+          <input id="entry-heading" name="title" type="text" placeholder="今天的记录">
+          <p class="field-hint">留空时显示“今天的记录”。</p>
+          <label for="entry-mood">心情</label>
+          <select id="entry-mood" name="mood"><option value="开心">😊 开心</option><option value="平静" selected>🌿 平静</option><option value="难过">😔 难过</option><option value="焦虑">😟 焦虑</option><option value="期待">✨ 期待</option></select>
+          <p class="field-hint">选一个接近此刻的心情。</p>
           <label for="entry-date">日期 <span>必填</span></label>
           <input id="entry-date" name="date" type="date" required aria-describedby="date-hint">
           <p id="date-hint" class="field-hint">默认是今天，也可以选择想记录的那一天。</p>
@@ -37,6 +45,20 @@
           <div id="discard-prompt" class="discard-prompt" hidden><p>这篇回忆还没保存，要放弃吗？</p><div class="form-actions"><button id="keep-writing" type="button" class="secondary">继续填写</button><button id="discard-entry" type="button" class="secondary">放弃内容</button></div></div>
           <p class="field-hint">保存后会显示在“我的回忆”，并保留在当前浏览器中。</p>
         </form>
+      </section>
+      <section id="detail-view" aria-labelledby="detail-title" hidden>
+        <button id="back-home" type="button" class="secondary">返回我的回忆</button>
+        <article class="entry-form">
+          <h1 id="detail-title" tabindex="-1"></h1>
+          <p id="detail-mood" class="entry-meta"></p>
+          <p id="detail-date" class="entry-meta"></p>
+          <p id="detail-created" class="entry-meta"></p>
+          <p id="detail-updated" class="entry-meta" hidden></p>
+          <p id="detail-content" class="memory-content"></p>
+          <div class="form-actions detail-actions"><button id="edit-entry" type="button" class="primary">编辑</button><button id="delete-entry" type="button" class="secondary danger">删除</button></div>
+          <div id="delete-prompt" class="discard-prompt" hidden><p>确定删除这篇回忆吗？删除后无法恢复。</p><div class="form-actions"><button id="cancel-delete" type="button" class="secondary">取消删除</button><button id="confirm-delete" type="button" class="secondary danger">确认删除</button></div></div>
+          <p id="detail-error" class="field-error" role="alert"></p>
+        </article>
       </section>
       <p id="save-status" class="save-status" role="status"></p>
       <noscript><p>请开启浏览器的 JavaScript，才能输入和保存回忆。</p></noscript>
