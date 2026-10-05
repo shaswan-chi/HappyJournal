@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>开心手帐 Happy Journal</title>
+    <link rel="stylesheet" href="styles/main.css">
+    <script src="scripts/storage.js" defer></script>
+    <script src="scripts/app.js" defer></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">记</span><span>开心手帐 <small>HAPPY JOURNAL</small></span></div>
+      <span class="header-note">记录生活，慢慢回顾。</span>
+    </header>
+    <main>
+      <p class="storage-note">临时体验 · 记录仅保留在当前页面，刷新或关闭后会消失。</p>
+      <section id="memories-view" aria-labelledby="memories-title">
+        <div class="section-heading">
+          <div><p class="eyebrow">生活里的小小片段</p><h1 id="memories-title" tabindex="-1">我的回忆</h1><p class="intro">平凡的一天，也有值得写下的瞬间。</p></div>
+          <button id="new-entry" class="primary" type="button">＋ 记录今天</button>
+        </div>
+        <div class="list-heading"><h2>留下的日常 <span id="entry-count">0 篇</span></h2><span>按日期从新到旧</span></div>
+        <div id="empty-state" class="empty-state"><span class="empty-mark" aria-hidden="true">一日一记</span><h2>从今天的一件小事开始</h2><p>一顿喜欢的饭、一次散步，或此刻的心情。<br>不用写得很好，写下就好。</p><button id="first-entry" type="button" class="primary">写下第一篇回忆</button></div>
+        <div id="memory-list" class="memory-grid"></div>
+      </section>
+      <section id="entry-view" aria-labelledby="entry-title" hidden>
+        <p class="eyebrow">给今天留几句话</p><h1 id="entry-title">写一篇回忆</h1><p class="intro">开心的、平淡的，都可以记在这里。</p>
+        <form id="entry-form" class="entry-form">
+          <label for="entry-date">日期 <span>必填</span></label>
+          <input id="entry-date" name="date" type="date" required aria-describedby="date-hint">
+          <p id="date-hint" class="field-hint">默认是今天，也可以选择想记录的那一天。</p>
+          <label for="entry-content">想记下什么？ <span>必填</span></label>
+          <textarea id="entry-content" name="content" rows="9" required placeholder="今天发生了什么？从一件小事写起……" aria-describedby="content-error"></textarea>
+          <p id="content-error" class="field-error" aria-live="polite"></p>
+          <div class="form-actions"><button type="submit" class="primary">保存回忆</button><button id="cancel-entry" type="button" class="secondary">取消</button></div>
+          <div id="discard-prompt" class="discard-prompt" hidden><p>这篇回忆还没保存，要放弃吗？</p><div class="form-actions"><button id="keep-writing" type="button" class="secondary">继续填写</button><button id="discard-entry" type="button" class="secondary">放弃内容</button></div></div>
+          <p class="field-hint">保存后会显示在“我的回忆”，刷新页面后会清空。</p>
+        </form>
+      </section>
+      <p id="save-status" class="save-status" role="status"></p>
+      <noscript><p>请开启浏览器的 JavaScript，才能输入和保存回忆。</p></noscript>
+    </main>
+    <footer>开心手帐 · 慢慢记录，好好生活</footer>
+  </body>
+</html>

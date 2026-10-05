@@ -1,0 +1,29 @@
+# Operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Local editor settings and temporary files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.tmp
+*.log
+
+# Private local configuration (keep example configuration trackable)
+.env
+.env.*
+!.env.example
+*.local
+
+# Generated dependencies and build/test output, if added later
+node_modules/
+dist/
+coverage/
+test-results/
+playwright-report/
+__pycache__/
+*.py[cod]
+.venv/
